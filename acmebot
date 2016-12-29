@@ -1,0 +1,1120 @@
+#!/usr/bin/env python3
+
+# Certificate manager using ACME protocol
+#
+# To install on Debian:
+# apt-get install build-essential libssl-dev libffi-dev python3-dev python3-pip
+# pip3 install acme py3dns
+
+import os
+import sys
+import argparse
+import json
+import time
+import datetime
+import re
+import subprocess
+import collections
+import tempfile
+import pwd
+import grp
+import heapq
+import hashlib
+import base64
+
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+import OpenSSL
+
+from acme import client
+from acme import messages
+from acme import jose
+
+import DNS
+
+DNSTuple = collections.namedtuple('DNSTuple', ['datetime', 'name_server', 'domain_name', 'response', 'attempt_count'])
+AuthorizationTuple = collections.namedtuple('AuthorizationTuple', ['datetime', 'authorization_resource'])
+PrivateKeyData = collections.namedtuple('PrivateKeyData', ['name', 'key', 'backup_key', 'key_timestamp',
+                                                           'generated_key', 'rolled_key', 'issued_certificates'])
+CertificateData = collections.namedtuple('CertificateData', ['certificate_name', 'certificate', 'chain', 'config'])
+
+class AcmeError(Exception):
+    pass
+
+class FileTransaction(object):
+    __slots__ = ['file', 'temp_file_path', 'file_path', 'chmod', 'timestamp']
+
+    def __init__(self, file_path, chmod=None, timestamp=None):
+        self.file_path = file_path
+        self.chmod = chmod
+        self.timestamp = timestamp
+        temp_file_descriptor, self.temp_file_path = tempfile.mkstemp()
+        self.file = open(temp_file_descriptor, 'w')
+
+    def __del__(self):
+        if (self.file):
+            self.file.close()
+            self.file = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, type, value, traceback):
+        if (self.file):
+            self.file.close()
+
+    def write(self, data):
+        self.file.write(data)
+
+class AcmeManager(object):
+    @classmethod
+    def Run(cls):
+        try:
+            manager = cls()
+            manager.run()
+            del manager
+        except AcmeError as error:
+            pass
+
+    def __init__(self):
+        script_dir = os.path.dirname(os.path.realpath(__file__))
+        self.script_name = os.path.basename(__file__)
+
+        argparser = argparse.ArgumentParser(description='ACME Certificate Manager')
+        argparser.add_argument('--version', action='version', version='%(prog)s 1.0')
+        argparser.add_argument('private_key_names', nargs = '*')
+        argparser.add_argument('-q', '--quiet',
+                               action='store_true', dest='quiet', default=False,
+                               help="Don't print status messages to stdout or warnings to stderr")
+        argparser.add_argument('-d', '--debug',
+                               action='store_true', dest='debug', default=False,
+                               help='Print detailed debugging information to stdout')
+        argparser.add_argument('-v', '--verbose',
+                               action='store_true', dest='verbose', default=False,
+                               help='Print more detailed debugging information to stdout')
+        argparser.add_argument('-c', '--config',
+                               dest='config_path', default=self.script_name+'.json', metavar='CONFIG_PATH',
+                               help='Specify file path for config')
+        argparser.add_argument('-r', '--rollover',
+                               action='store_true', dest='rollover', default=False,
+                               help='Rollover private keys and Diffie-Hellman parameters')
+        argparser.add_argument('-F', '--force',
+                               action='store_true', dest='force_rollover', default=False,
+                               help='Force rollover for keys within HPKP window')
+        argparser.add_argument('-R', '--renew',
+                               action='store_true', dest='renew', default=False,
+                               help='Renew certificate regardless of age')
+        argparser.add_argument('-K', '--revoke',
+                               action='store_true', dest='revoke', default=False,
+                               help='Revoke certificate')
+        self.args = argparser.parse_args()
+
+        if (self.args.debug):
+            sys.excepthook = debug_hook
+
+        self.authorizations = {}
+
+        self.config, self.config_file_path = self._load_config(self.args.config_path, ('.', os.path.join('/etc', self.script_name), script_dir))
+
+        self.resource_dir = os.path.join(script_dir, self._directory('resource', os.path.join('/var/local', self.script_name)))
+        os.makedirs(self.resource_dir, exist_ok = True)
+
+    def _load_config(self, file_path, search_paths=[]):
+        search_paths = [''] if (os.path.isabs(file_path)) else search_paths
+        for search_path in search_paths:
+            config_file_path = os.path.join(search_path, file_path)
+            if (os.path.isfile(config_file_path)):
+                try:
+                    with open(config_file_path) as config_file:
+                        return (json.load(config_file, object_pairs_hook=collections.OrderedDict), os.path.abspath(config_file_path))
+                except Exception as error:
+                    self._error('Error reading config file ', config_file_path, ': ', error, '\n')
+        self._error('Config file ', file_path, ' not found\n')
+
+    def _message(self, *args):
+        message = ''
+        for arg in args:
+            message += str(arg, 'utf-8', 'replace') if isinstance(arg, bytes) else str(arg)
+        return message
+
+    def _status(self, *args):
+        if (not self.args.quiet):
+            sys.stdout.write(self._message(*args))
+
+    def _debug(self, *args):
+        if ((self.args.debug or self.args.verbose) and not self.args.quiet):
+            sys.stdout.write(self._message(*args))
+
+    def _note(self, *args):
+        if (self.args.verbose and not self.args.quiet):
+            sys.stdout.write(self._message(*args))
+
+    def _warn(self, *args):
+        if (not self.args.quiet):
+            sys.stderr.write(self._message(*args))
+
+    def _error(self, *args):
+        message = self._message(*args)
+        sys.stderr.write(message)
+        raise AcmeError(message)
+
+    def _open_file(self, file_path, mode='r', chmod=0o777):
+        def opener(file_path, flags):
+            return os.open(file_path, flags, mode=chmod)
+        if (('w' in mode) and isinstance(file_path, str)):
+            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        return open(file_path, mode, opener=opener)
+
+    def _archive_file(self, file_path, archive_name='', archive_date=datetime.datetime.now()):
+        if (os.path.isfile(file_path) and (not os.path.islink(file_path)) and (archive_name is not None)):
+            archive_file_path = os.path.join(self._directory('archive', '/etc/ssl/archive'),
+                                             archive_name,
+                                             archive_date.strftime('%Y_%m_%d_%H%M%S') if (archive_date) else '',
+                                             os.path.basename(file_path))
+            os.makedirs(os.path.dirname(archive_file_path), exist_ok=True)
+            os.rename(file_path, archive_file_path)
+            self._note('Archived ', file_path, ' as ', archive_file_path, '\n')
+            return (file_path, archive_file_path)
+        return (None, None)
+
+    def _get_user_id(self, user_name):
+        try:
+            return pwd.getpwnam(user_name).pw_uid
+        except:
+            return -1
+
+    def _get_group_id(self, group_name):
+        try:
+            return grp.getgrnam(group_name).gr_gid
+        except:
+            return -1
+
+    def _rename_file(self, old_file_path, new_file_path, chmod=None, timestamp=None, archive_name=''):
+        old_file_path = old_file_path.replace('*', '_')
+        new_file_path = new_file_path.replace('*', '_')
+        if (os.path.isfile(old_file_path)):
+            self._archive_file(new_file_path, archive_name=archive_name)
+            os.makedirs(os.path.dirname(new_file_path), exist_ok=True)
+            os.rename(old_file_path, new_file_path)
+            if (chmod):
+                os.chmod(new_file_path, chmod)
+            if (timestamp):
+                os.utime(new_file_path, (timestamp, timestamp))
+            try:
+                os.chown(new_file_path, self._get_user_id(self._settings('file_user', 'root')), self._get_group_id(self._settings('file_group', 'ssl-cert')))
+            except PermissionError as error:
+                self._warn('Unable to set file ownership for ', new_file_path, '\n', error, '\n')
+
+    def _commit_file_transactions(self, file_transactions, archive_name=''):
+        archived_files = []
+        try:
+            if (archive_name is not None):
+                archive_date = datetime.datetime.now()
+                for file_transaction in file_transactions:
+                    archived_files.append(self._archive_file(file_transaction.file_path, archive_name=archive_name, archive_date=archive_date))
+            for file_transaction in file_transactions:
+                self._rename_file(file_transaction.temp_file_path, file_transaction.file_path,
+                                  chmod=file_transaction.chmod, timestamp=file_transaction.timestamp, archive_name=None)
+        except Exception as error:  # restore any archived files
+            for original_file_path, archived_file_path in archived_files:
+                if (original_file_path):
+                    os.rename(archive_file_path, original_file_path)
+            raise error
+
+    def _account(self, key, default = None):
+        return self.config.get('account', {}).get(key, default)
+
+    def _settings(self, key, default = None):
+        return self.config.get('settings', {}).get(key, default)
+
+    def _directory(self, key, default = None):
+        return self.config.get('directories', {}).get(key, default)
+
+    def _challenge_file_path(self, file_name, file_extension=''):
+        return os.path.join(self._directory('challenge', '/etc/ssl/challenges'), file_name + file_extension)
+
+    def _datetime_from_asn1_generaltime(self, general_time):
+        try:
+            return datetime.datetime.strptime(general_time.decode('ascii'), '%Y%m%d%H%M%SZ')
+        except ValueError:
+            return datetime.datetime.strptime(general_time.decode('ascii'), '%Y%m%d%H%M%S%z')
+
+    def _http_challenge_directory(self, domain_name):
+        return self.config.get('http_challenges', {}).get(domain_name, None)
+
+    def _zone_key(self, zone_name):
+        key_data = self.config.get('zone_update_keys', {}).get(zone_name, None)
+        if (key_data):
+            if (isinstance(key_data, str)):
+                return { 'file': os.path.join(self._directory('update_key', '/etc/ssl/update_keys'), key_data) }
+            if ('file' in key_data):
+                key_data = key_data.copy()
+                key_data['file'] = os.path.join(self._directory('update_key', '/etc/ssl/update_keys'), key_data['file'])
+                return key_data
+        return None
+
+    def _get_challenge(self, authorization_resource, type):
+        for challenge in authorization_resource.body.challenges:
+            if (type == challenge.typ):
+                return challenge
+        return None
+
+    def _get_domain_names(self, zone_dict, zone_name):
+        domain_names = []
+        for host_name in zone_dict[zone_name]:
+            host_name = host_name.strip().lower()
+            domain_names.append(zone_name if ('@' == host_name) else (host_name + '.' + zone_name))
+        return domain_names
+
+    def _reload_zone(self, zone_name):
+        try:
+            output = subprocess.check_output([self._settings('reload_zone_command', '/etc/bind/reload-zone.sh'), zone_name], stderr=subprocess.STDOUT)
+            self._debug('Reloading zone ', zone_name, '\n')
+            time.sleep(2)
+        except subprocess.CalledProcessError as error:
+            self._error('Failed to reload zone ', zone_name, ', code: ', error.returncode, '\n', error.output, '\n')
+        except Exception as error:
+            self._error('Failed to reload zone ', zone_name, '\n', error, '\n')
+
+    def _get_name_servers(self, zone_name):
+        try:
+            response = DNS.Request().req(name=zone_name, qtype='NS')
+            if ('NOERROR' == response.header['status']):
+                return [answer['data'] for answer in response.answers]
+        except Exception as error:
+            self._note('DNS Error: ', error, '\n')
+        self._warn('Unable to find name servers for ', zone_name, ' ', response.header.status, '\n')
+        return []
+
+    def _lookup_dns_challenge(self, name_server, domain_name):
+        try:
+            response = DNS.Request(server=name_server).req(name='_acme-challenge.' + domain_name, qtype='TXT')
+            if ('NOERROR' == response.header['status']):
+                return [answer['data'][0].decode('ascii') for answer in response.answers]
+        except Exception as error:
+            self._note('DNS Error: ', error, '\n')
+        return []
+
+    def _update_zone(self, updates, zone_name, zone_key, operation):
+        server = 'server {server} {port}\n'.format(server=zone_key['server'], port=zone_key.get('port', '')) if ('server' in zone_key) else ''
+        update_commands = '{server}zone {zone}\n{update}\nsend\n'.format(server=server, zone=zone_name, update='\n'.join(updates))
+        try:
+            self._note('nsupdate:\n', update_commands, '\n')
+            output = subprocess.check_output([self._settings('nsupdate_command', '/usr/bin/nsupdate'), '-v', '-k', zone_key['file']],
+                                             input=update_commands.encode('ascii'), stderr=subprocess.STDOUT)
+            self._debug(operation, ' records for ', zone_name, '\n')
+            return True
+        except subprocess.CalledProcessError as error:
+            self._warn(operation, ' records failed for ', zone_name, ', code: ', error.returncode, '\n', error.output, '\n')
+        except Exception as error:
+            self._warn(operation, ' records failed for ', zone_name, '\n', error, '\n')
+        return False
+
+    def _set_dns_challenges(self, zone_name, zone_key, challenges):
+        updates = ['update add _acme-challenge.{host} 300 TXT "{challenge}"'.format(host=host_name, challenge=challenges[host_name])
+                    for host_name in challenges]
+        return self._update_zone(updates, zone_name, zone_key, 'Set DNS challenges')
+
+    def _remove_dns_challenges(self, zone_name, zone_key, challenges):
+        updates = ['update delete _acme-challenge.{host} 300 TXT "{challenge}"'.format(host=host_name, challenge=challenges[host_name])
+                    for host_name in challenges]
+        self._update_zone(updates, zone_name, zone_key, 'Remove DNS challenges')
+
+    def _tlsa_data(self, host_data, certificate=None, chain=[], root_certificate=None, private_key=None, backup_key=None):
+        data = host_data.copy() if (isinstance(host_data, dict)) else { 'ports': host_data }
+        defaults = { 'ports': [443], 'usage': 'pkix-ee', 'selector': 'spki', 'protocol': 'tcp', 'ttl': 300 }
+        for key in defaults:
+            if (key not in data):
+                data[key] = defaults[key]
+        data['certificate'] = certificate
+        data['chain'] = chain
+        data['root_certificate'] = root_certificate
+        data['private_key'] = private_key
+        data['backup_key'] = backup_key
+        if (not isinstance(data['ports'], list)):
+            data['ports'] = [data['ports']]
+        return data
+
+    def _set_tlsa_records(self, zone_name, zone_key, tlsa_records):
+        usage = { 'pkix-ta': '0', 'pkix-ee': '1', 'dane-ta': '2', 'dane-ee': '3' }
+        selector = { 'cert': '0', 'spki': '1' }
+        updates = []
+        for host_name, tlsa_data in tlsa_records.items():
+            host_name = zone_name if ('@' == host_name) else (host_name + '.' + zone_name)
+            if (tlsa_data['usage'] in usage):
+                usage_id = usage[tlsa_data['usage']]
+            else:
+                self._warn('Unknown TLSA usage ', tlsa_data['usage'], '\n')
+                usage_id = usage['pkix-ee']
+            if ('cert' == tlsa_data['selector']):
+                if (tlsa_data['usage'] in ('pkix-ee', 'dane-ee')):
+                    certificates = [tlsa_data['certificate']]
+                else:
+                    certificates = tlsa_data['chain'] + [tlsa_data['root_certificate']]
+                keys = []
+            else:
+                certificates = []
+                if (tlsa_data['usage'] in ('pkix-ee', 'dane-ee')):
+                    keys = [self._public_key_bytes(tlsa_data['private_key']), self._public_key_bytes(tlsa_data['backup_key'])]
+                else:
+                    keys = ([self._certificate_public_key_bytes(certificate) for certificate in tlsa_data['chain']]
+                            + [self._certificate_public_key_bytes(tlsa_data['root_certificate'])])
+
+            for port in tlsa_data['ports']:
+                record = '_{port}._{protocol}.{host} {ttl} TLSA'.format(port=port, host=host_name, **tlsa_data)
+                updates.append('update delete {record}'.format(record=record))
+                record += ' ' + usage_id
+
+                for certificate in certificates:
+                    if (certificate):
+                        updates.append('update add {record} 0 1 {digest}'.format(record=record, digest=self._certificate_digest(certificate, 'sha256')))
+                        updates.append('update add {record} 0 2 {digest}'.format(record=record, digest=self._certificate_digest(certificate, 'sha512')))
+                for key_bytes in keys:
+                    if (key_bytes):
+                        updates.append('update add {record} 1 1 {digest}'.format(record=record, digest=hashlib.sha256(key_bytes).hexdigest()))
+                        updates.append('update add {record} 1 2 {digest}'.format(record=record, digest=hashlib.sha512(key_bytes).hexdigest()))
+        self._update_zone(updates, zone_name, zone_key, 'Set TLSA')
+
+    def _remove_tlsa_records(self, zone_name, zone_key, tlsa_records):
+        updates = []
+        for host_name, tlsa_data in tlsa_records.items():
+            host_name = zone_name if ('@' == host_name) else (host_name + '.' + zone_name)
+            updates += ['update delete _{port}._{proto}.{host} TLSA'.format(port=port, proto=tlsa_data['protocol'], host=host_name)
+                            for port in tlsa_data['ports']]
+        self._update_zone(updates, zone_name, zone_key, 'Remove TLSA')
+
+    def _reload_service(self, service_name):
+        service_commands = self.config.get('services', {})
+        if (service_name in service_commands):
+            self._debug('Reloading service ', service_name, '\n')
+            try:
+                output = subprocess.check_output(service_commands[service_name], shell=True, stderr=subprocess.STDOUT)
+                if (output):
+                    self._warn('Service ', service_name, ' responded to reload with:\n', output, '\n')
+            except subprocess.CalledProcessError as error:
+                self._warn('Service ', service_name, ' reload failed, code: ', error.returncode, '\n', error.output, '\n')
+        else:
+            self._warn('Service ', service_name, ' does not have registered reload command\n')
+
+    def generate_rsa_key(self, key_size):
+        key = OpenSSL.crypto.PKey()
+        key.generate_key(OpenSSL.crypto.TYPE_RSA, key_size or self._settings('key_size', 4096))
+        return key
+
+    def _private_key_file_path(self, file_name, file_extension='.key'):
+        return os.path.join(self._directory('private_key', '/etc/ssl/private'), file_name + file_extension)
+
+    def load_private_key(self, file_name):
+        try:
+            file_path = self._private_key_file_path(file_name)
+            with open(file_path, 'r') as private_key_file:
+                return (OpenSSL.crypto.load_privatekey(OpenSSL.crypto.FILETYPE_PEM, private_key_file.read().encode('ascii')), os.stat(file_path).st_mtime)
+        except:
+            return (None, None)
+
+    def save_private_key(self, file_name, private_key, timestamp=None, certificate=None, chain=[], dhparam_pem=None):
+        with FileTransaction(self._private_key_file_path(file_name), 0o640, timestamp) as transaction:
+            transaction.write(OpenSSL.crypto.dump_privatekey(OpenSSL.crypto.FILETYPE_PEM, private_key).decode('ascii'))
+            if (certificate):
+                transaction.write('\n')
+                self._save_certificate(transaction, certificate, chain=chain, dhparam_pem=dhparam_pem)
+        return transaction
+
+    def archive_private_key(self, file_name, archive_name='', archive_date=None):
+        self._archive_file(self._private_key_file_path(file_name), archive_name=archive_name, archive_date=archive_date)
+
+    def _safe_to_rollover(self, backup_key_timestamp, hpkp_days):
+        if (backup_key_timestamp and hpkp_days):
+            backup_key_modified_time = datetime.datetime.fromtimestamp(backup_key_timestamp)
+            return (hpkp_days < (datetime.datetime.now() - backup_key_modified_time).days)
+        return True
+
+    def _public_key_bytes(self, private_key):
+        if (private_key):
+            return private_key.to_cryptography_key().public_key().public_bytes(Encoding.DER, PublicFormat.SubjectPublicKeyInfo)
+        return None
+
+    def _certificate_public_key_bytes(self, certificate):
+        if (certificate):
+            return certificate.get_pubkey().to_cryptography_key().public_bytes(Encoding.DER, PublicFormat.SubjectPublicKeyInfo)
+        return None
+
+    def _public_key_digest(self, private_key, digest='sha256'):
+         if ('sha256' == digest):
+             return hashlib.sha256(self._public_key_bytes(private_key)).digest()
+         return hashlib.sha512(self._public_key_bytes(private_key)).digest()
+
+    def _hpkp_file_path(self, file_name, file_extension):
+        return os.path.join(self._directory('hpkp', '/etc/ssl/hpkp'), file_name + file_extension)
+
+    def hpkp_headers_present(self, file_name):
+        return (os.path.isfile(self._hpkp_file_path(file_name, '.nginx'))
+                and os.path.isfile(self._hpkp_file_path(file_name, '.apache')))
+
+    def save_hpkp_headers(self, file_name, private_key, backup_key, hpkp_days, pin_subdomains):
+        primary_pin = base64.b64encode(self._public_key_digest(private_key)).decode('ascii')
+        backup_pin = base64.b64encode(self._public_key_digest(backup_key)).decode('ascii')
+        duration = str(hpkp_days * 86400)
+        sub_domains = ' includeSubdomains;' if (pin_subdomains) else ''
+
+        with FileTransaction(self._hpkp_file_path(file_name, '.nginx'), 0o644) as nginx_transaction:
+            nginx_transaction.write('add_header Public-Key-Pins "pin-sha256=\\"' + primary_pin + '\\"; pin-sha256=\\"' + backup_pin + '\\"; max-age=' + duration + ';' + sub_domains + '";\n')
+
+        with FileTransaction(self._hpkp_file_path(file_name, '.apache'), 0o644) as apache_transaction:
+            apache_transaction.write('Header always set Public-Key-Pins "pin-sha256=\\"' + primary_pin + '\\"; pin-sha256=\\"' + backup_pin + '\\"; max-age=' + duration + '; ' + sub_domains + '"\n')
+
+        return nginx_transaction, apache_transaction
+
+    def archive_hpkp_headers(self, file_name, archive_name='', archive_date=None):
+        self._archive_file(self._hpkp_file_path(file_name, '.nginx'), archive_name=archive_name, archive_date=archive_date)
+        self._archive_file(self._hpkp_file_path(file_name, '.apache'), archive_name=archive_name, archive_date=archive_date)
+
+    def get_alt_names(self, certificate):
+        for index in range(certificate.get_extension_count()):
+            extension = certificate.get_extension(index)
+            if (b'subjectAltName' == extension.get_short_name()):
+                return [alt_name.split(':')[1] for alt_name in str(extension).split(', ')]
+        return []
+
+    def _private_key_matches_certificate(self, private_key, certificate):
+        return self._public_key_bytes(private_key) == self._certificate_public_key_bytes(certificate)
+
+    def _certificate_digest(self, certificate, digest='sha256'):
+        return certificate.wrapped.digest(digest).decode('ascii').replace(':','').lower()
+
+    def _certificate_file_path(self, file_name, file_extension='.pem'):
+        return os.path.join(self._directory('certificate', '/etc/ssl/certs'), file_name + file_extension)
+
+    def load_certificate(self, file_name):
+        try:
+            with open(self._certificate_file_path(file_name), 'r') as certificate_file:
+                return jose.ComparableX509(OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, certificate_file.read().encode('ascii')))
+        except:
+            return None
+
+    def save_certificate(self, file_name, certificate, chain=[], root_certificate=None, dhparam_pem=None):
+        with FileTransaction(self._certificate_file_path(file_name), 0o644) as transaction:
+            self._save_certificate(transaction.file, certificate, chain=chain, root_certificate=root_certificate, dhparam_pem=dhparam_pem)
+        return transaction
+
+    def archive_certificate(self, file_name, archive_name='', archive_date=None):
+        self._archive_file(self._certificate_file_path(file_name), archive_name=archive_name, archive_date=archive_date)
+
+    def _save_certificate(self, certificate_file, certificate, chain=[], root_certificate=None, dhparam_pem=None):
+        certificate_pem = OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_PEM, certificate.wrapped).decode('ascii')
+        certificate_not_before = self._datetime_from_asn1_generaltime(certificate.get_notBefore())
+        certificate_file.write(certificate.get_subject().commonName + ' issued at ' + certificate_not_before.strftime('%Y-%m-%d %H:%M:%S UTC') + '\n')
+        certificate_file.write(certificate_pem)
+        for chain_certificate in chain:
+            chain_certificate_pem = OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_PEM, chain_certificate.wrapped).decode('ascii')
+            certificate_file.write('\n' + chain_certificate.get_subject().commonName + '\n')
+            certificate_file.write(chain_certificate_pem)
+        if (root_certificate):
+            root_certificate_pem = OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_PEM, root_certificate.wrapped).decode('ascii')
+            certificate_file.write('\n' + root_certificate.get_subject().commonName + '\n')
+            certificate_file.write(root_certificate_pem)
+        if (dhparam_pem):
+            certificate_file.write('\n' + dhparam_pem)
+
+    def generate_dhparam(self, dhparam_size, ecparam_curve):
+        try:
+            dhparam_pem = subprocess.check_output(['openssl', 'dhparam', str(dhparam_size)], stderr=subprocess.DEVNULL).decode('ascii') if (dhparam_size) else None
+            ecparam_pem = subprocess.check_output(['openssl', 'ecparam', '-name', ecparam_curve], stderr=subprocess.DEVNULL).decode('ascii') if (ecparam_curve) else None
+            if (dhparam_pem and ecparam_pem):
+                return dhparam_pem + '\n' + ecparam_pem
+            return dhparam_pem or ecparam_pem
+        except:
+            return None
+
+    def _dhparam_file_path(self, file_name, file_extension='.param'):
+        return os.path.join(self._directory('dhparam', '/etc/ssl/private'), file_name + file_extension)
+
+    def dhparam_present(self, file_name):
+        return os.path.isfile(self._dhparam_file_path(file_name))
+
+    def load_dhparam(self, file_name):
+        try:
+            dhparam_file_path = self._dhparam_file_path(file_name)
+            if (os.path.isfile(dhparam_file_path)):
+                with open(dhparam_file_path) as dhparam_file:
+                    return dhparam_file.read()
+            with open(self._certificate_file_path(file_name)) as certificate_file:
+                certificate_pem = certificate_file.read()
+                match = re.match(r'.*(-----BEGIN DH PARAMETERS-----.*-----END EC PARAMETERS-----)', certificate_pem, re.DOTALL)
+                if (match):
+                    return match.group(1)
+        except:
+            pass
+        return None
+
+    def save_dhparam(self, file_name, dhparam_pem):
+        with FileTransaction(self._dhparam_file_path(file_name), 0o640) as transaction:
+            transaction.write(dhparam_pem)
+        return transaction
+
+    def archive_dhparam(self, file_name, archive_name='', archive_date=None):
+        self._archive_file(self._dhparam_file_path(file_name), archive_name=archive_name, archive_date=archive_date)
+
+    def generate_csr(self, private_key, common_name, alt_names=[], must_staple=False):
+        req = OpenSSL.crypto.X509Req()
+        req.get_subject().CN = common_name
+        extensions = [
+            OpenSSL.crypto.X509Extension(
+                b'subjectAltName',
+                critical=False,
+                value=', '.join('DNS:%s' % domain_name for domain_name in alt_names).encode('ascii')
+            )
+        ]
+        if (must_staple):
+            extensions.append(OpenSSL.crypto.X509Extension(
+                b'1.3.6.1.5.5.7.1.24',
+                critical=False,
+                value=b'DER:30:03:02:01:05'))
+        req.add_extensions(extensions)
+        req.set_version(2)
+        req.set_pubkey(private_key)
+        req.sign(private_key, 'sha256')
+        return req
+
+    def _validate_certificates(self):
+        private_keys = self.config.get('private_keys', collections.OrderedDict())
+        if ('certificates' in self.config): # convert bare certificate definitions to private key definitions
+            certificates = self.config['certificates']
+            for certificate_name in certificates:
+                if (certificate_name not in private_keys):
+                    private_keys[certificate_name] = collections.OrderedDict()
+                if ('certificates' not in private_keys[certificate_name]):
+                    private_keys[certificate_name]['certificates'] = collections.OrderedDict()
+                if (certificate_name not in private_keys[certificate_name]['certificates']):
+                    for config_key in ('key_size', 'expiration_days', 'hpkp_days', 'pin_subdomains'):
+                        if ((config_key in certificates[certificate_name]) and (config_key not in private_keys[certificate_name])):
+                            private_keys[certificate_name][config_key] = certificates[certificate_name][config_key]
+                            del certificates[certificate_name][config_key]
+                    private_keys[certificate_name]['certificates'][certificate_name] = certificates[certificate_name]
+                else:
+                    self._error('Certificate ', certificate_name, ' already configured with private key\n')
+            del self.config['certificates']
+            self.config['private_keys'] = private_keys
+
+        private_keys = self.config.get('private_keys', {})
+        for private_key_name in private_keys:
+            certificates = private_keys[private_key_name].get('certificates', {})
+            if (not certificates):
+                self._error('No certificates defined for private key ', private_key_name, '\n')
+            for certificate_name in certificates:
+                for zone_name in certificates[certificate_name].get('alt_names', {}):
+                    common_name = certificates[certificate_name].get('common_name', certificate_name)
+                    if (common_name in self._get_domain_names(certificates[certificate_name]['alt_names'], zone_name)):
+                        break
+                else:
+                    self._error('Certificate common name "', common_name, '" not listed in alt_names\n')
+
+    def connect_client(self):
+        client_key_path = os.path.join(self.resource_dir, 'client_key.json')
+        if (os.path.isfile(client_key_path)):
+            with open(client_key_path) as client_key_file:
+                self.client_key = jose.JWKRSA.fields_from_json(json.load(client_key_file))
+                self._note('Loaded clent key ', client_key_path, '\n')
+        else:
+            self._status('Client key not present, generating\n')
+            self.client_key = jose.JWKRSA(key=rsa.generate_private_key(public_exponent=65537,
+                                                                       key_size=self._settings('key_size', 4096),
+                                                                       backend=default_backend()))
+            with self._open_file(client_key_path, 'w', 0o600) as client_key_file:
+                json.dump(self.client_key.fields_to_partial_json(), client_key_file)
+                self._note('Saved client key ', client_key_path, '\n')
+
+        try:
+            self.acme_client = client.Client(self._settings('acme_directory_url', 'https://acme-v01.api.letsencrypt.org/directory'), self.client_key)
+        except Exception as error:
+            self._error("Can't connect to ACME service.\n", error, '\n')
+
+        registration_path = os.path.join(self.resource_dir, 'registration.json')
+        if (os.path.isfile(registration_path)):
+            with open(registration_path) as registration_file:
+                self.registration = messages.RegistrationResource.json_loads(registration_file.read())
+                self._note('Loaded registration ', registration_path, '\n')
+
+            self.registration = self.acme_client.query_registration(self.registration)
+        else:
+            self._note('Registering client\n')
+            self.registration = self.acme_client.register(messages.NewRegistration.from_data(email=self._account('email', '')))
+            self._note('Auto-accepting TOS: ', self.registration.terms_of_service, '\n')
+            self.acme_client.agree_to_tos(self.registration)
+            self.registration = self.acme_client.query_registration(self.registration)   # get agreement info
+        with FileTransaction(registration_path, 0o600) as transaction:
+            transaction.write(self.registration.json_dumps())
+            self._note('Saved registration ', registration_path, '\n')
+        self._commit_file_transactions([transaction], archive_name=None)
+
+    def process_authorizations(self, private_key_names=[]):
+        private_keys = self.config.get('private_keys', {})
+        authorizations = self.config.get('authorizations', {})
+
+        domain_challenges = {}
+        for private_key_name in private_keys:
+            if (private_key_names and (private_key_name not in private_key_names)):
+                continue
+            certificates = private_keys[private_key_name].get('certificates', {})
+            for certificate_name in certificates:
+                for zone_name in certificates[certificate_name]['alt_names']:
+                    if (zone_name not in domain_challenges):
+                        domain_challenges[zone_name] = []
+                    for domain_name in self._get_domain_names(certificates[certificate_name]['alt_names'], zone_name):
+                        if (domain_name not in domain_challenges[zone_name]):
+                            domain_challenges[zone_name].append(domain_name)
+
+        if (not self._settings('slave_mode', False)):
+            for zone_name in authorizations:
+                if (zone_name not in domain_challenges):
+                    domain_challenges[zone_name] = []
+                for domain_name in self._get_domain_names(authorizations, zone_name):
+                    if (domain_name not in domain_challenges[zone_name]):
+                        domain_challenges[zone_name].append(domain_name)
+
+        # get authorizations
+        authorization_resources = {}
+        for zone_name in domain_challenges:
+            for domain_name in domain_challenges[zone_name]:
+                self._debug('Request authorization for ', domain_name, '\n')
+                authorization_resource = self.acme_client.request_domain_challenges(domain_name, new_authzr_uri=self.registration.new_authzr_uri)
+                if (messages.STATUS_VALID == authorization_resource.body.status):
+                    self.authorizations[domain_name] = authorization_resource
+                    self._debug(domain_name, ' already authorized\n')
+                elif (messages.STATUS_PENDING == authorization_resource.body.status):
+                    if (not self._settings('slave_mode', False)):
+                        authorization_resources[domain_name] = authorization_resource
+                    else:
+                        self._debug(domain_name, ' not authorized\n')
+                else:
+                    self._error('Unexpected status "', authorization_resource.body.status, '" for authorization of ', domain_name, '\n')
+
+        # set challenge responses
+        challenge_types = {}
+        challenge_dns_responses = {}
+        challenge_http_responses = {}
+        for zone_name in domain_challenges:
+            zone_responses = {}
+            for domain_name in domain_challenges[zone_name]:
+                if (domain_name in authorization_resources):
+                    http_challenge_directory = self._http_challenge_directory(domain_name)
+                    if (http_challenge_directory):
+                        challenge_types[domain_name] = 'http-01'
+                        challenge = self._get_challenge(authorization_resources[domain_name], challenge_types[domain_name])
+                        challenge_file_path = os.path.join(http_challenge_directory, challenge.chall.encode('token'))
+                        self._debug('Setting http acme-challenge for ', domain_name, ' in file ', challenge_file_path, '\n')
+                        try:
+                            with self._open_file(challenge_file_path, 'w', 0o644) as challenge_file:
+                                challenge_file.write(challenge.validation(self.client_key))
+                            challenge_http_responses[domain_name] = challenge_file_path
+                        except Exception as error:
+                            self._warn('Unable to create acme-challenge file ', challenge_file_path, '\n', error, '\n')
+                    else:
+                        challenge_types[domain_name] = 'dns-01'
+                        challenge = self._get_challenge(authorization_resources[domain_name], challenge_types[domain_name])
+                        zone_responses[domain_name] = challenge.validation(self.client_key)
+                        self._debug('Setting DNS for _acme-challenge.', domain_name, ' = "', zone_responses[domain_name], '"\n')
+            if (zone_responses):
+                zone_key = self._zone_key(zone_name)
+                if (zone_key):
+                    if (self._set_dns_challenges(zone_name, zone_key, zone_responses)):
+                        challenge_dns_responses[zone_name] = zone_responses
+                else:
+                    try:
+                        with self._open_file(self._challenge_file_path(zone_name), 'w', 0o644) as challenge_file:
+                            json.dump(zone_responses, challenge_file);
+                        challenge_dns_responses[zone_name] = zone_responses
+                    except Exception as error:
+                        self._warn('Unable to create acme-challenge file for zone ', zone_name, '\n', error, '\n')
+                    if (zone_name in challenge_dns_responses):
+                        self._reload_zone(zone_name)
+
+        # wait for DNS propagation
+        waiting = []
+        for zone_name in challenge_dns_responses:
+            name_servers = self._get_name_servers(zone_name)
+            self._note('Got name servers ', name_servers, ' for ', zone_name, '\n')
+            for name_server in name_servers:
+                waiting += [DNSTuple(datetime.datetime.now(), name_server, domain_name, challenge_dns_responses[zone_name][domain_name], 0)
+                                for domain_name in challenge_dns_responses[zone_name]]
+        while waiting:
+            when, name_server, domain_name, response, attempt_count = heapq.heappop(waiting)
+            now = datetime.datetime.now()
+            if (now < when):
+                seconds = (when - now).seconds
+                if (0 < seconds):
+                    time.sleep(seconds)
+            dns_challenges = self._lookup_dns_challenge(name_server, domain_name)
+            if (response in dns_challenges):
+                self._debug('Challenge present for ', domain_name, ' at ', name_server, '\n')
+            else:
+                self._note('Challenge missing for ', domain_name, ' at ', name_server, '\n')
+                if (attempt_count < self._settings('max_dns_lookup_attempts', 30)):
+                    heapq.heappush(waiting, DNSTuple(datetime.datetime.now() + datetime.timedelta(seconds=self._settings('dns_lookup_delay', 10)),
+                                                     name_server, domain_name, response, attempt_count + 1))
+                else:
+                    self._warn('Maximum attempts reached waiting for DNS challenge ', domain_name, ' at ', name_server, '\n')
+        if (challenge_dns_responses):
+            time.sleep(2)
+
+        # answer challenges
+        for domain_name in authorization_resources:
+            self._debug('Answering challenge for ', domain_name, '\n')
+            challenge = self._get_challenge(authorization_resources[domain_name], challenge_types[domain_name])
+            self.acme_client.answer_challenge(challenge, challenge.response(self.client_key))
+
+        # poll for authorizations
+        waiting = [AuthorizationTuple(datetime.datetime.now(), authorization_resource) for authorization_resource in authorization_resources.values()]
+        attempts = collections.defaultdict(int)
+        exhausted = []
+        failed = []
+        while waiting:
+            when, authorization_resource = heapq.heappop(waiting)
+            now = datetime.datetime.now()
+            if (now < when):
+                seconds = (when - now).seconds
+                if (0 < seconds):
+                    time.sleep(seconds)
+            self._debug('Polling for ', authorization_resource.body.identifier.value, '\n')
+            authorization_resource, response = self.acme_client.poll(authorization_resource)
+            if (200 != response.status_code):
+                self._warn(response, ' while waiting for domain challenge\n')
+                heapq.heappush(waiting, AuthorizationTuple(
+                    self.acme_client.retry_after(response, default=self._settings('authorization_delay', 10)),
+                    authorization_resource))
+                continue
+
+            attempts[authorization_resource] += 1
+            if (messages.STATUS_VALID == authorization_resource.body.status):
+                self.authorizations[authorization_resource.body.identifier.value] = authorization_resource
+                self._debug('Authorization received\n')
+                continue
+            elif (messages.STATUS_INVALID == authorization_resource.body.status):
+                self._debug('Invalid authorization: ', self._get_challenge(authorization_resource, challenge_types[domain_name]).error.detail, '\n')
+                failed.append(authorization_resource)
+            elif (messages.STATUS_PENDING == authorization_resource.body.status):
+                if (self._settings('max_authorization_attempts', 30) < attempts[authorization_resource]):
+                    exhausted.append(authorization_resource)
+                    self._note('Giving up\n')
+                else:
+                    self._note('Retrying\n')
+                    heapq.heappush(waiting, AuthorizationTuple(
+                        self.acme_client.retry_after(response, default=self._settings('authorization_delay', 10)),
+                        authorization_resource))
+            else:
+                self._error('Unexpected status "', authorization_resource.body.status, '"\n')
+
+        # clear challenge responses
+        for zone_name in challenge_dns_responses:
+            self._debug('Removing DNS _acme-challenges for ', zone_name, '\n')
+            zone_key = self._zone_key(zone_name)
+            if (zone_key):
+                self._remove_dns_challenges(zone_name, zone_key, challenge_dns_responses[zone_name])
+            else:
+                os.remove(self._challenge_file_path(zone_name))
+                self._reload_zone(zone_name)
+        for domain_name in challenge_http_responses:
+            self._debug('Removing http acme-challenge for ', domain_name, '\n')
+            os.remove(challenge_http_responses[domain_name])
+
+        for authorization_resource in failed:
+            self._status('Authorization failed for ', authorization_resource.body.identifier.value, '\n')
+        for authorization_resource in exhausted:
+            self._status('Authorization timed out for ', authorization_resource.body.identifier.value, '\n')
+
+    def process_certificates(self, private_key_names=[]):
+        private_keys = self.config.get('private_keys', {})
+        updated_key_zones = set()
+        updated_tlsa_zones = collections.OrderedDict()
+        updated_services = set()
+        processed_keys = []
+
+        for private_key_name in private_keys:
+            if (private_key_names and (private_key_name not in private_key_names)):
+                continue
+
+            self._debug('Processing private key ', private_key_name, '\n')
+
+            rolled_private_key = False
+            generated_private_key = False
+
+            backup_key, backup_key_timestamp = self.load_private_key(private_key_name + '_backup')
+            hpkp_days = private_keys[private_key_name].get('hpkp_days', self._settings('hpkp_days', 30))
+            rollover = False
+            if (self.args.rollover):
+                if (self.args.force_rollover or self._safe_to_rollover(backup_key_timestamp, hpkp_days)):
+                    rollover = True
+                else:
+                    self._warn('Backup private key for ', private_key_name, ' is younger than HPKP duration, rollover skipped\n',
+                                'Use "--force" to force key rollover, note that this can brick a web site if HPKP is deployed\n')
+            private_key, private_key_timestamp = self.load_private_key(private_key_name) if (not rollover) else (None, None)
+
+            if (backup_key and not private_key):
+                self._status('Private key rolled over for ', private_key_name, '\n')
+                private_key, private_key_timestamp = backup_key, backup_key_timestamp
+                backup_key, backup_key_timestamp = None, None
+                rolled_private_key = True
+
+            if (private_key and not rolled_private_key and self._safe_to_rollover(backup_key_timestamp, hpkp_days)):
+                backup_key_modified_time = datetime.datetime.fromtimestamp(backup_key_timestamp)
+                backup_key_age = (datetime.datetime.now() - backup_key_modified_time).days
+                expiration_days = private_keys[private_key_name].get('expiration_days') or self._settings('expiration_days', 730)
+                if (expiration_days < backup_key_age):
+                    self._status('Backup key for ', private_key_name, ' is ', backup_key_age, ' days old and has expired. Use "--rollover" to replace.\n')
+
+            if (not private_key):
+                self._status('Generating primary key for ', private_key_name, '\n')
+                private_key = self.generate_rsa_key(private_keys[private_key_name].get('key_size'))
+                generated_private_key = True
+
+            issued_certificates = []
+            certificates = private_keys[private_key_name].get('certificates', {})
+            for certificate_name in certificates:
+                self._debug('Processing certificate ', certificate_name, '\n')
+
+                alt_names = []
+                for zone_name in certificates[certificate_name]['alt_names']:
+                    alt_names += self._get_domain_names(certificates[certificate_name]['alt_names'], zone_name)
+
+                missing_authorizations = [alt_name for alt_name in alt_names if (alt_name not in self.authorizations)]
+                if (missing_authorizations):
+                    self._status('Unable to issue certificate ', certificate_name, ' due to missing authorization(s) for: ', ', '.join(missing_authorizations), '\n')
+                    if (rolled_private_key):
+                        issued_certificates = []    # do not partially install new certificates if private key changed
+                        break
+                    continue
+
+                common_name = certificates[certificate_name].get('common_name', certificate_name)
+                if ((not rolled_private_key) and (not self.args.renew)):
+                    existing_certificate = self.load_certificate(certificate_name)
+                    if (existing_certificate):
+                        certificate_common_name = existing_certificate.get_subject().commonName
+                        if (common_name != certificate_common_name):
+                            self._status('Common name changed for ', certificate_name, ' from ', certificate_common_name, ' to ', common_name, '\n')
+                        else:
+                            certificate_alt_names = self.get_alt_names(existing_certificate)
+                            new_alt_names = set(alt_names)
+                            existing_alt_names = set(certificate_alt_names)
+                            if (new_alt_names != existing_alt_names):
+                                added_alt_names = new_alt_names - existing_alt_names
+                                removed_alt_names = existing_alt_names - new_alt_names
+                                self._status('Alt names changed for ', certificate_name,
+                                             (', adding ' + ', '.join([alt_name for alt_name in alt_names if (alt_name in added_alt_names)])) if added_alt_names else '',
+                                             (', removing ' + ', '.join([alt_name for alt_name in certificate_alt_names if (alt_name in removed_alt_names)])) if removed_alt_names else '',
+                                             '\n')
+                            else:
+                                if (not self._private_key_matches_certificate(private_key, existing_certificate)):
+                                    self._status('Certificate ', certificate_name, ' public key does not match private key\n')
+                                else:
+                                    valid_duration = self._datetime_from_asn1_generaltime(existing_certificate.get_notAfter()) - datetime.datetime.now()
+                                    if (valid_duration.days < 0):
+                                        self._status('Existing certificate ', certificate_name, ' has expired\n')
+                                    elif (valid_duration.days < self._settings('renewal_days', 30)):
+                                        self._status('Existing certificate ', certificate_name, ' will expire in ',
+                                                     (str(valid_duration.days) + ' days') if (valid_duration.days) else 'less than a day',
+                                                     '\n')
+                                    else:
+                                        self._debug('Certificate valid beyond renewal window\n')
+                                        continue
+
+                csr = self.generate_csr(private_key, common_name, alt_names)
+                self._status('Requesting certificate for ', common_name, (' with alt names: ' + ', '.join(alt_names)) if (alt_names) else '', '\n')
+                try:
+                    certificate_resource = self.acme_client.request_issuance(jose.ComparableX509(csr),
+                                                                             [self.authorizations[domain_name] for domain_name in alt_names])
+                except Exception as error:
+                    self._warn('Certificate issuance failed\n', error, '\n')
+                    if (rolled_private_key):
+                        issued_certificates = []    # do not partially install new certificates if private key changed
+                        break
+                    continue
+
+                self._debug('New certificate issued\n')
+                chain = self.acme_client.fetch_chain(certificate_resource)
+                issued_certificates.append(CertificateData(certificate_name, certificate_resource.body, chain, certificates[certificate_name]))
+
+            if (issued_certificates):
+                processed_keys.append(PrivateKeyData(private_key_name, private_key, backup_key, private_key_timestamp,
+                                                     generated_private_key, rolled_private_key, issued_certificates))
+
+
+        # install keys and certificates
+        root_certificate = self.load_certificate(os.path.join(os.path.dirname(self.config_file_path), 'root_cert'))
+        for private_key_data in processed_keys:
+            private_key_name = private_key_data.name
+
+            generated_backup_key = False
+            backup_key = private_key_data.backup_key
+            if (not backup_key):
+                self._status('Generating backup key for ', private_key_name, '\n')
+                backup_key = self.generate_rsa_key(private_keys[private_key_name].get('key_size'))
+                generated_backup_key = True
+
+            hpkp_days = private_keys[private_key_name].get('hpkp_days', self._settings('hpkp_days', 30))
+
+            transactions = []
+            if (private_key_data.generated_key or private_key_data.rolled_key):
+                transactions.append(self.save_private_key(private_key_name, private_key_data.key, timestamp=private_key_timestamp))
+            if (generated_backup_key):
+                transactions.append(self.save_private_key(private_key_name + '_backup', backup_key))
+            if ((0 < hpkp_days)
+                    and (private_key_data.generated_key or generated_backup_key or not self.hpkp_headers_present(private_key_name))):
+                transactions += self.save_hpkp_headers(private_key_name, private_key_data.key, backup_key, hpkp_days,
+                                                       private_keys[private_key_name].get('pin_subdomains', self._settings('pin_subdomains', True)))
+
+            for certificate_data in private_key_data.issued_certificates:
+                certificate_name = certificate_data.certificate_name
+                generated_dhparam = False
+
+                dhparam_pem = self.load_dhparam(certificate_name) if (not private_key_data.rolled_key) else None
+                if (not dhparam_pem):
+                    dhparam_size = certificate_data.config.get('dhparam_size', self._settings('dhparam_size', 2048))
+                    ecparam_curve = certificate_data.config.get('ecparam_curve', self._settings('ecparam_curve', 'secp384r1'))
+                    if (dhparam_size or ecparam_curve):
+                        self._status('Generating Diffie-Hellman parameters for ', certificate_name, '\n')
+                        dhparam_pem = self.generate_dhparam(dhparam_size, ecparam_curve)
+                        generated_dhparam = True
+
+                if (dhparam_pem and (generated_dhparam or not self.dhparam_present(certificate_name))):
+                    transactions.append(self.save_dhparam(certificate_name, dhparam_pem))
+                transactions.append(self.save_certificate(certificate_name, certificate_data.certificate, chain=certificate_data.chain, dhparam_pem=dhparam_pem))
+                if (root_certificate):
+                    transactions.append(self.save_certificate(certificate_name + '+root', certificate_data.certificate,
+                                                              chain=certificate_data.chain, root_certificate=root_certificate, dhparam_pem=dhparam_pem))
+                transactions.append(self.save_private_key(certificate_name + '_full', private_key_data.key,
+                                                          certificate=certificate_data.certificate, chain=certificate_data.chain, dhparam_pem=dhparam_pem))
+
+            try:
+                self._commit_file_transactions(transactions, archive_name=private_key_name)
+                if (private_key_data.generated_key or private_key_data.rolled_key or generated_backup_key):
+                    self._status('Private keys for ', private_key_name, ' installed\n')
+                for certificate_data in private_key_data.issued_certificates:
+                    certificate_name = certificate_data.certificate_name
+                    self._status('Certificate ', certificate_name, ' installed\n')
+                    updated_services.update(certificate_data.config.get('services', []))
+                    if (not self._settings('slave_mode', False)):
+                        for zone_name in certificate_data.config['alt_names']:
+                            if (not self._zone_key(zone_name)):
+                                updated_key_zones.add(zone_name)
+                    tlsa_records = certificate_data.config.get('tlsa_records', {})
+                    for zone_name in tlsa_records:
+                        if (self._zone_key(zone_name)):
+                            if (zone_name not in updated_tlsa_zones):
+                                updated_tlsa_zones[zone_name] = collections.OrderedDict()
+                            for host_name in tlsa_records[zone_name]:
+                                updated_tlsa_zones[zone_name][host_name] = self._tlsa_data(
+                                    tlsa_records[zone_name][host_name],
+                                    certificate=certificate_data.certificate, chain=certificate_data.chain,
+                                    root_certificate=root_certificate,
+                                    private_key=private_key_data.key, backup_key=backup_key)
+                        else:
+                            self._warn('No update key configured for zone ', zone_name, ' unable to set TLSA records\n')
+            except Exception as error:
+                self._warn('Unable to install keys and certificates for ', private_key_name, '\n', error, '\n')
+
+        for zone_name in updated_key_zones:
+            self._reload_zone(zone_name)
+        for zone_name in updated_tlsa_zones:
+            self._set_tlsa_records(zone_name, self._zone_key(zone_name), updated_tlsa_zones[zone_name])
+        for service_name in updated_services:
+            self._reload_service(service_name)
+
+    def revoke_certificates(self, private_key_names):
+        private_keys = self.config.get('private_keys', {})
+        updated_key_zones = set()
+        updated_tlsa_zones = collections.OrderedDict()
+
+        for private_key_name in private_key_names:
+            if (private_key_name in private_keys):
+                certificates = private_keys[private_key_name].get('certificates', {})
+                revoked_certificates = []
+                for certificate_name in certificates:
+                    certificate = self.load_certificate(certificate_name)
+                    if (certificate):
+                        try:
+                            self.acme_client.revoke(certificate)
+                            revoked_certificates.append(certificate_name)
+                            self._status('Certificate ', certificate_name, ' revoked\n')
+                        except Exception as error:
+                            self._warn('Unable to revoke certificate ', certificate_name, '\n', error, '\n')
+                    else:
+                        self._warn('Certificate ', certificate_name, ' not found\n')
+                archive_date = datetime.datetime.now()
+                for certificate_name in revoked_certificates:
+                    self.archive_certificate(certificate_name, archive_name=private_key_name, archive_date=archive_date)
+                    self.archive_certificate(certificate_name + '+root', archive_name=private_key_name, archive_date=archive_date)
+                    self.archive_private_key(certificate_name + '_full', archive_name=private_key_name, archive_date=archive_date)
+                    if (not self._settings('slave_mode', False)):
+                        for zone_name in certificates[certificate_name]['alt_names']:
+                            if (not self._zone_key(zone_name)):
+                                updated_key_zones.add(zone_name)
+                    tlsa_records = certificates[certificate_name].get('tlsa_records', {})
+                    for zone_name in tlsa_records:
+                        if (self._zone_key(zone_name)):
+                            if (zone_name not in updated_tlsa_zones):
+                                updated_tlsa_zones[zone_name] = collections.OrderedDict()
+                            for host_name in tlsa_records[zone_name]:
+                                updated_tlsa_zones[zone_name][host_name] = self._tlsa_data(tlsa_records[zone_name][host_name])
+                        else:
+                            self._warn('No update key configured for zone ', zone_name, ' unable to remove TLSA records\n')
+                if (len(revoked_certificates) == len(certificates)):
+                    self.archive_private_key(private_key_name, archive_name=private_key_name, archive_date=archive_date)
+                    self.archive_hpkp_headers(private_key_name, archive_name=private_key_name, archive_date=archive_date)
+                    self.archive_dhparam(certificate_name, archive_name=private_key_name, archive_date=archive_date)
+            else:
+                self._warn(private_key_name, ' is not a configured private key\n')
+
+        for zone_name in updated_key_zones:
+            self._reload_zone(zone_name)
+        for zone_name in updated_tlsa_zones:
+            self._remove_tlsa_records(zone_name, self._zone_key(zone_name), updated_tlsa_zones[zone_name])
+
+    def _process_running(self, pid_file_path):
+        try:
+            with open(pid_file_path) as pid_file:
+                return (-1 < os.getsid(int(pid_file.read())))
+        except:
+            pass
+        return False
+
+    def run(self):
+        self._validate_certificates()
+        pid_file_path = os.path.join(self._directory('pid', '/var/run'), self.script_name + '.pid')
+        if (self._process_running(pid_file_path)):
+            self._error('Client already running\n')
+        with self._open_file(pid_file_path, 'w') as pid_file:
+            pid_file.write(str(os.getpid()))
+        try:
+            self.connect_client()
+            if (self.args.revoke):
+                if (not self.args.private_key_names):
+                    self._error('Revocation must explicitly specify private key names\n')
+                else:
+                    self.revoke_certificates(self.args.private_key_names)
+            else:
+                self.process_authorizations(self.args.private_key_names)
+                self.process_certificates(self.args.private_key_names)
+            del self.acme_client
+        finally:
+            os.remove(pid_file_path)
+
+
+
+def debug_hook(type, value, tb):
+   if hasattr(sys, 'ps1') or not sys.stderr.isatty():
+      # we are in interactive mode or we don't have a tty-like
+      # device, so we call the default hook
+      sys.__excepthook__(type, value, tb)
+   else:
+      import traceback, pdb
+      # we are NOT in interactive mode, print the exception...
+      traceback.print_exception(type, value, tb)
+      print()
+      # ...then start the debugger in post-mortem mode.
+      pdb.pm()
+
+
+if __name__ == '__main__':      # called from the command line
+    AcmeManager.Run()
+

@@ -1,0 +1,121 @@
+{
+    "account": {
+        "email": "<youremail@yourdomain>"
+    },
+    "settings": {
+        "slave_mode": false,
+        "key_size": 4096,
+        "dhparam_size": 2048,
+        "ecparam_curve": "secp384r1",
+        "file_user": "root",
+        "file_group": "ssl-cert",
+        "hpkp_days": 30,
+        "pin_subdomains": true,
+        "renewal_days": 30,
+        "expiration_days": 730,
+        "max_dns_lookup_attempts": 60,
+        "dns_lookup_delay": 10,
+        "max_authorization_attempts": 30,
+        "authorization_delay": 10,
+        "acme_directory_url": "https://acme-v01.api.letsencrypt.org/directory",
+        "reload_zone_command": "/etc/bind/reload-zone.sh",
+        "nsupdate_command": "/usr/bin/nsupdate"
+    },
+    "directories": {
+        "pid": "/var/run",
+        "resource": "/var/local/acmebot",
+        "private_key": "/etc/ssl/private",
+        "certificate": "/etc/ssl/certs",
+        "dhparam": "/etc/ssl/private",
+        "challenge": "/etc/ssl/challenges",
+        "hpkp": "/etc/ssl/hpkp",
+        "archive": "/etc/ssl/archive",
+        "update_key": "/etc/ssl/update_keys"
+    },
+    "services": {
+        "apache": "systemctl reload apache2",
+        "coturn": "systemctl restart coturn",
+        "dovecot": "systemctl restart dovecot",
+        "etherpad": "systemctl restart etherpad",
+        "nginx": "systemctl reload nginx",
+        "postfix": "systemctl reload postfix",
+        "prosody": "systemctl restart prosody",
+        "synapse": "systemctl restart matrix-synapse",
+        "znc": "systemctl restart znc"
+    },
+    "certificates": {
+        "<certificate-name>": {
+            "common_name": "<common-name>",
+            "alt_names": {
+                "<zone-name>": ["@", "<host-name>"]
+            },
+            "services": ["<service-name>"],
+            "tlsa_records": {
+                "zone-name": {
+                    "<host-name>": <port-number>,
+                    "<host-name>": [<port-number>, <port-number>],
+                    "<host-name>": {
+                        "ports": [<port-number>, <port-number>],
+                        "usage": "pkix-ee",
+                        "selector": "spki",
+                        "protocol": "tcp",
+                        "ttl": 300
+                    }
+                }
+            },
+            "dhparam_size": 2048,
+            "ecparam_curve": "secp384r1",
+            "key_size": 4096,
+            "expiration_days": 730,
+            "hpkp_days": 30,
+            "pin_subdomains": true
+        }
+    },
+    "private_keys": {
+        "<key-name>": {
+            "certificates": {
+                "<certificate-name>": {
+                    "common_name": "<common-name>",
+                    "alt_names": {
+                        "<zone-name>": ["@", "<host-name>"]
+                    },
+                    "services": ["<service-name>"],
+                    "tlsa_records": {
+                        "<zone-name>": {
+                            "<host-name>": <port-number>,
+                            "<host-name>": [<port-number>, <port-number>],
+                            "<host-name>": {
+                                "ports": [<port-number>, <port-number>],
+                                "usage": "pkix-ee",
+                                "selector": "spki",
+                                "protocol": "tcp",
+                                "ttl": 300
+                            }
+                        }
+                    },
+                    "dhparam_size": 2048,
+                    "ecparam_curve": "secp384r1"
+                }
+            },
+            "key_size": 4096,
+            "expiration_days": 730,
+            "hpkp_days": 30,
+            "pin_subdomains": true
+        }
+    },
+    "authorizations": {
+        "<zone-name>": ["<host-name>", "<host-name>"]
+    },
+    "http_challenges": {
+        "<domain-name>": "<challenge-directory>"
+    },
+    "zone_update_keys": {
+        "<zone-name>": "<key-file>",
+        "<zone-name>": {
+            "file": "<key-file>",
+            "server": "<server>",
+            "port": <port-number>
+        }
+    }
+}
+
