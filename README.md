@@ -51,14 +51,14 @@ The tool also automatically maintains proper HPKP header information.
 
 ### Mixed Use of DNS and HTTP Authorization
 
-By default this tool performs DNS-01 authorizartions for domain validation.
-It is possible to configure overrides for specific domains names to use HTTP-01 authorization instead.
+By default this tool performs dns-01 authorizartions for domain validation.
+It is possible to configure overrides for specific domains names to use http-01 authorization instead.
 This is useful for situations where a domain outside your immediate control has provided an alias to your web site.
 
 
 ### Automatic Local or Remote DNS Updates
 
-This tool can automatically add and remove DNS records for DNS-01 authorizations as well as TLSA records.
+This tool can automatically add and remove DNS records for dns-01 authorizations as well as TLSA records.
 Updates to a local server can be made via an external zone file processor, such as [bindtool],
 or to a remote DNS server via RFC 2136 dynamic DNS updates using nsupdate.
 The choice between local and remote DNS updates can be made on a zone by zone basis.
@@ -79,12 +79,12 @@ The configuration file can be placed in the current directory that the tool is r
 the /etc/acmebot directory,
 or the same directory that the acmebot tool is installed in.
 
-Note that when using DNS-01 authorizations via a local DNS server,
+Note that when using dns-01 authorizations via a local DNS server,
 this tool needs to be able to add, remove, update DNS records.
 This can be achieved by installing it on your master DNS server and using [bindtool] to manage the zone file,
 or you can use a custom shell script to update the DNS records.
 
-When using DNS-01 authorizations via a remote server,
+When using dns-01 authorizations via a remote server,
 an update key allowing the creation and deletion of TXT and optionally TLSA record types is required.
 
 Optional: some services require a full certificate chain including the root (OSCP stapling on Nginx, for example).
@@ -134,11 +134,11 @@ The host name '@' is used for the name of the zone itself.
 
 ### Authorization Setup
 
-By default, the tool will attempt DNS-01 domain authorizations for every alternative name specified,
+By default, the tool will attempt dns-01 domain authorizations for every alternative name specified,
 using local DNS updates.
 See the later sections on configuring local or remote DNS updates.
 
-To use HTTP-01 authorizations instead,
+To use http-01 authorizations instead,
 configure the 'http_challenges' section of the configuration file specifying a challenge directory for each fully qualified host name.
 
 For example:
@@ -419,7 +419,7 @@ The default value is '/etc/ssl/private'.
 The default value is '/etc/ssl/certs'.
 * 'dhparam' specifies the directory to store Diffie-Hellman parameter files.
 The default value is '/etc/ssl/private'.
-* 'challenge' specifies the directory to store ACME DNS-01 challenge files.
+* 'challenge' specifies the directory to store ACME dns-01 challenge files.
 The default value is '/etc/ssl/challenge'.
 * 'hpkp' specifies the directory to store HPKP header files.
 The default value is '/etc/ssl/hpkp'.
@@ -700,14 +700,14 @@ Example:
 
 ### HTTP Challenges
 
-By default, the tool will attempt DNS-01 domain authorizations for every alternative name specified,
+By default, the tool will attempt dns-01 domain authorizations for every alternative name specified,
 using local or remote DNS updates.
 
-To use HTTP-01 authorizations instead,
+To use http-01 authorizations instead,
 configure the 'http_challenges' section of the configuration file specifying a challenge directory for each fully qualified domain name.
 
-It is possible to mix usage of DNS-01 and HTTP-01 domain authorizations on a host by host basis,
-simply specify a http challenge directory only for those hosts requiring HTTP-01 authentication.
+It is possible to mix usage of dns-01 and http-01 domain authorizations on a host by host basis,
+simply specify a http challenge directory only for those hosts requiring http-01 authentication.
 
 Example:
 
@@ -761,7 +761,7 @@ Example:
 
 ## Configuring Local DNS Updates
 
-In order to perform DNS-01 authorizations,
+In order to perform dns-01 authorizations,
 and to keep TLSA records up to date,
 the tool will need to be able to add, remove, and update various DNS records.
 
@@ -814,7 +814,7 @@ Will define the zone 'example.com' using the nameservers 'ns1.example.com' and '
 
 ## Configuring Remote DNS Updates
 
-If the tool is not run on a machine also hosting a DNS server, then HTTP-01 authorizations or remote DNS updates must be used.
+If the tool is not run on a machine also hosting a DNS server, then http-01 authorizations or remote DNS updates must be used.
 
 The use remote DNS udpates via RFC 2136 dynamic updates,
 configure a zone update key for each zone.

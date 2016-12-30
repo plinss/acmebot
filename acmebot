@@ -21,6 +21,7 @@ import grp
 import heapq
 import hashlib
 import base64
+import pkg_resources
 
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -80,9 +81,10 @@ class AcmeManager(object):
     def __init__(self):
         script_dir = os.path.dirname(os.path.realpath(__file__))
         self.script_name = os.path.basename(__file__)
+        self.script_version = '1.0'
 
         argparser = argparse.ArgumentParser(description='ACME Certificate Manager')
-        argparser.add_argument('--version', action='version', version='%(prog)s 1.0')
+        argparser.add_argument('--version', action='version', version='%(prog)s ' + self.script_version)
         argparser.add_argument('private_key_names', nargs = '*')
         argparser.add_argument('-q', '--quiet',
                                action='store_true', dest='quiet', default=False,
@@ -626,7 +628,10 @@ class AcmeManager(object):
                 self._note('Saved client key ', client_key_path, '\n')
 
         try:
-            self.acme_client = client.Client(self._settings('acme_directory_url', 'https://acme-v01.api.letsencrypt.org/directory'), self.client_key)
+            user_agent = '{script}/{version} acme-python/{acme_version}'.format(script=self.script_name, version=self.script_version,
+                             acme_version=pkg_resources.get_distribution('acme').version)
+            network = client.ClientNetwork(self.client_key, user_agent=user_agent)
+            self.acme_client = client.Client(self._settings('acme_directory_url', 'https://acme-v01.api.letsencrypt.org/directory'), self.client_key, net=network)
         except Exception as error:
             self._error("Can't connect to ACME service.\n", error, '\n')
 
