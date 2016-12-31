@@ -519,7 +519,7 @@ The name of each certificate is used as the name of the certificate files.
 If omitted, the name of the certificate will be used.
 * 'alt_names' specifies the set of subject alternative names for the certificate.
 This must be specified and the common name of the certificate must be included as one of the alternative names.
-The alternateive names are specified as a list of host names per DNS zone,
+The alternative names are specified as a list of host names per DNS zone,
 so that associated DNS updates happen in the correct zone.
 The zone name may be used directly by specifying '@'.
 Multiple zones may be specified.
@@ -627,7 +627,7 @@ To specify TLSA records, add a 'tlsa_records' name/object pair to each certifica
 TLSA records are specified per DNS zone, similar to 'alt_names',
 to specify which zone should be updated for each TLSA record.
 
-Each TLSA record maye be a simple pair of host name and a list of ports,
+Each TLSA record may be a simple pair of host name and a list of ports,
 or a host name and an object specifying further options.
 
 * 'ports' specifies the port number for the TLSA record.
@@ -700,7 +700,7 @@ Example:
 This section specifies a set of host name authorizations to obtain without issuing certificates.
 
 This is used when running in a master/slave configuration,
-the master having access to local or remote DNS updates or an HTTP server,
+the master, having access to local or remote DNS updates or an HTTP server,
 obtains authorizations,
 while the slave issues the certificates.
 
@@ -714,7 +714,11 @@ Simplar to 'alt-names', a host name of '@' may be used to specify the zone name.
 Example:
 
     {
-        "example.com": ["@", "www"]
+        ...
+        "authorizations": {
+            "example.com": ["@", "www"]
+        },
+        ...
     }
 
 
@@ -736,7 +740,8 @@ Example:
         "http_challenges": {
             "example.com": "/var/www/htdocs/.well-known/acme-challenge"
             "www.example.com": "/var/www/htdocs/.well-known/acme-challenge"
-        }
+        },
+        ...
     }
 
 The 'http_challenges' must specify a directory on the local file system such that files placed there will be served via an already running http server for each given domain name.
@@ -757,25 +762,29 @@ specify either a string containing the file name of the TSIG key,
 or an object with further options.
 
 The TSIG file name may an absolute path or a path relative to the 'update_key' directory setting.
-Both the &lt;key-name&gt;.key file and the &lt;key-name&gt;.private files must be present.
+Both the &lt;key-file&gt;.key file and the &lt;key-file&gt;.private files must be present.
 
-Any zone referred to in a certificate, private key, or authorization that does not have a corresponding zone update will use local DNS updates unless an HTTP challenge directory has been specified for every host in that zone.
+Any zone referred to in a certificate, private key, or authorization that does not have a corresponding zone update key will use local DNS updates unless an HTTP challenge directory has been specified for every host in that zone.
 
 * 'file' specifies the name of the TSIG key file.
-* 'server' specified the name of the DNS server to send update requests to.
+* 'server' specifies the name of the DNS server to send update requests to.
 If omitted, the primary name server from the zone's SOA record will be used.
 * 'port' specifies the port to send update requests to.
 The default value is '53'.
 
 Example:
 
-    "zone_update_keys": {
-        "example1.com": "update.example1.com.key",
-        "example2.com": {
-            "file": "update.example2.com.key",
-            "server": "ns1.example2.com",
-            "port": 53
-        }
+    {
+        ...
+        "zone_update_keys": {
+            "example1.com": "update.example1.com.key",
+            "example2.com": {
+                "file": "update.example2.com.key",
+                "server": "ns1.example2.com",
+                "port": 53
+            }
+        },
+        ...
     }
 
 
@@ -875,6 +884,7 @@ accept the certificate authority's terms and conditions,
 perform all needed domain authorizations,
 generate private keys,
 issue certificates,
+generate custom Diffie-Hellman parameters,
 install certificate and key files,
 update TLSA records,
 and reload services associated to the certificates.
@@ -978,13 +988,13 @@ All certificates using that private key will be revoked,
 and the certificate files and the primary private key file will be moved to the archive.
 
 The next time the tool is run after a revocation,
-any revoked certificates will automatically perform a private key rollover.
+any revoked certificates that are sill configured will automatically perform a private key rollover.
 
 
 ## Master/Slave Setup
 
 In some circumstances, it is useful to run the tool in a master/slave configuration.
-In this setup, the master performs domain authorizations,
+In this setup, the master performs domain authorizations
 while the slave issues and maintains certificates.
 
 This setup is useful when the slave machine doesn not have the ability to perform domain authorizations,
@@ -1022,8 +1032,5 @@ otherwise it is recommended to use 'spki' selectors for TLSA records so that cer
 
 If private keys are shared between a master and slave,
 be sure to only perform private key rollovers on the master and copy new private key files to the slaves after the rollover.
-
 The slave will automatically detect the new private key and re-issue certificates on the next run.
-
-
 
