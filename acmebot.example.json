@@ -26,11 +26,12 @@
         "resource": "/var/local/acmebot",
         "private_key": "/etc/ssl/private",
         "certificate": "/etc/ssl/certs",
-        "dhparam": "/etc/ssl/private",
+        "chain": "/etc/ssl/certs",
+        "param": "/etc/ssl/private",
         "challenge": "/etc/ssl/challenges",
         "hpkp": "/etc/ssl/hpkp",
-        "archive": "/etc/ssl/archive",
-        "update_key": "/etc/ssl/update_keys"
+        "update_key": "/etc/ssl/update_keys",
+        "archive": "/etc/ssl/archive"
     },
     "services": {
         "apache": "systemctl reload apache2",

@@ -168,6 +168,7 @@ automatically accept the certificate authority's terms of service,
 obtain authorizations for each configured domain name,
 generate primary and backup private keys as needed for the configured certificates,
 issue certificates,
+generate custom Diffie-Hellman parameters,
 and install the certificates and private keys into /etc/ssl/certs and /etc/ssl/private.
 
 If desired, you can test the tool using Let's Encrypt's staging server.
@@ -179,7 +180,7 @@ you should delete the client key and registration files (/var/local/acmebot/*.js
 ## File Locations
 
 After a successful certificate issuance,
-up to eight files will be created per certificate.
+up to nine files will be created per certificate.
 
 The locations for these files can be controlled via the 'directories' section of the configuration file.
 The default locations are used here for brevity.
@@ -204,15 +205,24 @@ Two certificate files will be created,
 one in /etc/ssl/certs, named &lt;filename&gt;.pem,
 containing the certificate,
 followed by any intermediate certificates sent by the certificate authority,
-followed by custom Diffie-Hellman paramaters;
+followed by custom Diffie-Hellman and elliptic curve paramaters;
 the second file will be created in /etc/ssl/private, named &lt;filename&gt;_full.key,
 and will contain the private key,
 followed by the certificate,
 followed by any intermediate certificates sent by the certificate authority,
-followed by custom Diffie-Hellman paramaters.
+followed by custom Diffie-Hellman and elliptic curve paramaters.
 
 The &lt;filename&gt;_full.key file is useful for services that require both the private key and certificate to be in the same file,
 such as ZNC.
+
+
+### Intermediate Certificate Chain File
+
+If the certificate authority uses intermediate certificates to sign your certificates,
+a file will be created in /etc/ssl/certs, named &lt;filename&gt;.chain,
+containing the intermediate certificates sent by the certificate authority.
+
+This file will not be created if the 'chain' directory is set to 'null'.
 
 
 ### Full Chain Certificate File
@@ -223,7 +233,7 @@ named &lt;filename&gt;+root.pem.
 This file will contain the certificate,
 followed by any intermediate certificates sent by the certificate authority,
 followed by the root certificate,
-followed by custom Diffie-Hellman paramaters.
+followed by custom Diffie-Hellman and elliptic curve paramaters.
 
 If the 'root_cert.pem' file is not found in the same directory as the configuration file,
 this certificate file will not be created.
@@ -237,6 +247,8 @@ If custom Diffie-Hellman parameters or a custom elliptical curve are configured,
 a file will be created in /etc/ssl/private, named &lt;filename&gt;.param,
 containing the Diffie-Hellman parameters and elliptical curve paramaters.
 
+This file will not be created if the 'param' directory is set to 'null'.
+
 
 ### Hypertext Public Key Pin (HPKP) Files
 
@@ -244,6 +256,8 @@ Two additional files will be created in /etc/ssl/hpkp, named  &lt;filename&gt;.a
 These files contain HTTP header directives setting HPKP for both the primary and backup private keys.
 
 Each file is suitable to be included in the server configuration for either Apache or Nginx respectively.
+
+Thess files will not be created if the 'hpkp' directory is set to 'null'.
 
 
 ### Archive Directory
@@ -417,16 +431,21 @@ The default value is '/var/local/acmebot'.
 The default value is '/etc/ssl/private'.
 * 'certificate' specifies the directory to store certificate files.
 The default value is '/etc/ssl/certs'.
-* 'dhparam' specifies the directory to store Diffie-Hellman parameter files.
+* 'chain' specifies the directory to store certificate intermediate chain files.
+The default value is '/etc/ssl/certs'.
+Chain files may be omitted by setting this to 'null'.
+* 'param' specifies the directory to store Diffie-Hellman parameter files.
 The default value is '/etc/ssl/private'.
+Paramater files may be omitted by setting this to 'null'.
 * 'challenge' specifies the directory to store ACME dns-01 challenge files.
 The default value is '/etc/ssl/challenge'.
 * 'hpkp' specifies the directory to store HPKP header files.
 The default value is '/etc/ssl/hpkp'.
-* 'archive' specifies the directory to store older versions of files that are replaced by this tool.
-The default value is '/etc/ssl/archive'.
+HPKP header files may be turned off by setting this to 'null'.
 * 'update_key' specifies the directory to search for DNS update key files.
 The default value is '/etc/ssl/update_keys'.
+* 'archive' specifies the directory to store older versions of files that are replaced by this tool.
+The default value is '/etc/ssl/archive'.
 
 Example:
 
@@ -437,11 +456,12 @@ Example:
             "resource": "/var/local/acmebot",
             "private_key": "/etc/ssl/private",
             "certificate": "/etc/ssl/certs",
-            "dhparam": "/etc/ssl/private",
+            "chain": "/etc/ssl/certs",
+            "param": "/etc/ssl/private",
             "challenge": "/etc/ssl/challenges",
             "hpkp": "/etc/ssl/hpkp",
-            "archive": "/etc/ssl/archive",
-            "update_key": "/etc/ssl/update_keys"
+            "update_key": "/etc/ssl/update_keys",
+            "archive": "/etc/ssl/archive"
         },
         ...
     }
@@ -924,6 +944,7 @@ the tool will notify you that it is time to rollover the private key.
 The rollover process will archive the current primary private key,
 re-issue certificates using the existing backup key as the new primary key,
 generate a new backup private key,
+generate new custom Diffie-Hellman parameters,
 and reset HPKP headers and TLSA records as appropriate.
 
 To rollover private keys, simply run the tool with the '--rollover' option.
