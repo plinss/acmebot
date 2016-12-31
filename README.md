@@ -627,12 +627,20 @@ To specify TLSA records, add a 'tlsa_records' name/object pair to each certifica
 TLSA records are specified per DNS zone, similar to 'alt_names',
 to specify which zone should be updated for each TLSA record.
 
-Each TLSA record may be a simple pair of host name and a list of ports,
-or a host name and an object specifying further options.
+For each zone in the TLSA record object,
+specify a list of either host name strings or objects.
+Using a host name sting is equivalent to:
 
-* 'ports' specifies the port number for the TLSA record.
+    {
+        "host": "<host-name>"
+    }
+
+The values for the objects are:
+* 'host' specifies the host name for the TLSA record.
+The default value is '@'.
+The host name '@' is used for the name of the zone itself.
+* 'port' specifies the port number for the TLSA record.
 The default value is '443'.
-The port for each record may be a single integer or a list of integers to create records for multiple ports.
 * 'usage' is one of the following: 'pkix-ta', 'pkix-ee', 'dane-ta', or 'dane-ee'.
 The default value is 'pkix-ee'.
 When specifying an end effector TLSA record ('pkix-ee' or 'dane-ee'),
@@ -661,16 +669,17 @@ Example:
                         },
                         "services": ["nginx"],
                         "tlsa_records": {
-                            "example.com": {
-                                "@": 443,
-                                "www": {
-                                    "ports": 443,
+                            "example.com": [
+                                "@",
+                                {
+                                    "host": "www",
+                                    "port": 443,
                                     "usage": "pkix-ee",
                                     "selector": "spki",
                                     "protocol": "tcp",
                                     "ttl": 300
                                 }
-                            }
+                            ]
                         }
                     },
                     "mail.example.com": {
@@ -679,11 +688,19 @@ Example:
                         },
                         "services": ["dovecot", "postfix"],
                         "tlsa_records": {
-                            "example.com": {
-                                "mail": 993,
-                                "smtp": {
-                                    "ports": [25, 465, 587],
+                            "example.com": [
+                                {
+                                    "host": "mail",
+                                    "port": 993
+                                },
+                                {
+                                    "host": "smtp",
+                                    "port": 25,
                                     "usage": "dane-ee"
+                                },
+                                {
+                                    "host": "smtp",
+                                    "port": 587
                                 }
                             }
                         }
@@ -886,8 +903,8 @@ generate private keys,
 issue certificates,
 generate custom Diffie-Hellman parameters,
 install certificate and key files,
-update TLSA records,
-and reload services associated to the certificates.
+reload services associated to the certificates,
+and update TLSA records.
 
 Each subsequent run will ensure that all authorizations remain valid,
 check if any backup private keys are past their expiration date,
@@ -903,7 +920,10 @@ If a certificate needs to be renewed or has been modified,
 the certificate will be re-issued and reinstalled.
 
 When certificates are issued or re-issued,
-TLSA record updates will be attempted and associated services will be reloaded.
+local DNS updates will be attempted (to update TLSA records) and associated services will be reloaded.
+
+When using remote DNS updates,
+all configured TLSA records will be verified and updated as needed on each run.
 
 All certificates and private keys will normally be processed on each run,
 to restrict processing to specific private keys (and their certificates),
@@ -985,10 +1005,21 @@ run the tool with the '--revoke' option on the command line.
 When revoking certificates, as a safety measure,
 it is necessary to also specify the name of the private key (or keys) that should be revoked.
 All certificates using that private key will be revoked,
-and the certificate files and the primary private key file will be moved to the archive.
+the certificate files and the primary private key file will be moved to the archive,
+and remote DNS TLSA records will be removed.
 
 The next time the tool is run after a revocation,
-any revoked certificates that are sill configured will automatically perform a private key rollover.
+any revoked certificates that are still configured will automatically perform a private key rollover.
+
+
+### Authorization Only
+
+Use of the '--auth' option on the command line will limit the tool to only performing domain autorizations.
+
+
+### Remote TLSA Updates
+
+Use of the '--tlsa' option on the command line will limit the tool to only verifying and updating configured TLSA records via remote DNS updates.
 
 
 ## Master/Slave Setup

@@ -82,17 +82,17 @@
                     },
                     "services": ["<service-name>"],
                     "tlsa_records": {
-                        "<zone-name>": {
-                            "<host-name>": <port-number>,
-                            "<host-name>": [<port-number>, <port-number>],
-                            "<host-name>": {
-                                "ports": [<port-number>, <port-number>],
+                        "<zone-name>": [
+                            "<host-name>",
+                            {
+                                "host": "<host-name>",
+                                "port": <port-number>,
                                 "usage": "pkix-ee",
                                 "selector": "spki",
                                 "protocol": "tcp",
                                 "ttl": 300
                             }
-                        }
+                        ]
                     },
                     "dhparam_size": 2048,
                     "ecparam_curve": "secp384r1"

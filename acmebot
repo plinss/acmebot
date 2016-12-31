@@ -22,6 +22,7 @@ import heapq
 import hashlib
 import base64
 import pkg_resources
+import binascii
 
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -39,6 +40,8 @@ AuthorizationTuple = collections.namedtuple('AuthorizationTuple', ['datetime', '
 PrivateKeyData = collections.namedtuple('PrivateKeyData', ['name', 'key', 'backup_key', 'key_timestamp',
                                                            'generated_key', 'rolled_key', 'issued_certificates'])
 CertificateData = collections.namedtuple('CertificateData', ['certificate_name', 'certificate', 'chain', 'config'])
+TLSAData = collections.namedtuple('TLSAData', ['host', 'port', 'usage', 'selector', 'protocol', 'ttl',
+                                               'certificate', 'chain', 'root_certificate', 'private_key', 'backup_key'])
 
 class AcmeError(Exception):
     pass
@@ -110,6 +113,12 @@ class AcmeManager(object):
         argparser.add_argument('-K', '--revoke',
                                action='store_true', dest='revoke', default=False,
                                help='Revoke certificate')
+        argparser.add_argument('-a', '--auth',
+                               action='store_true', dest='auth', default=False,
+                               help='Update authorizations only')
+        argparser.add_argument('-t', '--tlsa',
+                               action='store_true', dest='tlsa', default=False,
+                               help='Update TLSA records only')
         self.args = argparser.parse_args()
 
         if (self.args.debug):
@@ -310,6 +319,16 @@ class AcmeManager(object):
         except Exception as error:
             self._error('Failed to reload zone ', zone_name, '\n', error, '\n')
 
+    def _get_primary_name_server(self, zone_name):
+        try:
+            response = DNS.Request().req(name=zone_name, qtype='SOA')
+            if ('NOERROR' == response.header['status']):
+                return response.answers[0]['data'][0]
+        except Exception as error:
+            self._note('DNS Error: ', error, '\n')
+        self._warn('Unable to find primary name server for ', zone_name, ' ', response.header.status, '\n')
+        return None
+
     def _get_name_servers(self, zone_name):
         try:
             response = DNS.Request().req(name=zone_name, qtype='NS')
@@ -329,11 +348,21 @@ class AcmeManager(object):
             self._note('DNS Error: ', error, '\n')
         return []
 
+    def _lookup_tlsa_records(self, name_server, host, port, protocol):
+        try:
+            response = DNS.Request(server=name_server).req(name='_{port}._{protocol}.{host}'.format(port=port, protocol=protocol, host=host), qtype=52)
+            if ('NOERROR' == response.header['status']):
+                return ['{} {} {} {}'.format(answer['data'][0], answer['data'][1], answer['data'][2], binascii.hexlify(answer['data'][3:]).decode('ascii'))
+                         for answer in response.answers]
+        except Exception as error:
+            self._note('DNS Error: ', error, '\n')
+        return []
+
     def _update_zone(self, updates, zone_name, zone_key, operation):
         server = 'server {server} {port}\n'.format(server=zone_key['server'], port=zone_key.get('port', '')) if ('server' in zone_key) else ''
         update_commands = '{server}zone {zone}\n{update}\nsend\n'.format(server=server, zone=zone_name, update='\n'.join(updates))
         try:
-            self._note('nsupdate:\n', update_commands, '\n')
+            self._note('nsupdate:\n', update_commands)
             output = subprocess.check_output([self._settings('nsupdate_command'), '-v', '-k', zone_key['file']],
                                              input=update_commands.encode('ascii'), stderr=subprocess.STDOUT)
             self._debug(operation, ' records for ', zone_name, '\n')
@@ -354,67 +383,74 @@ class AcmeManager(object):
                     for host_name in challenges]
         self._update_zone(updates, zone_name, zone_key, 'Remove DNS challenges')
 
-    def _tlsa_data(self, host_data, certificate=None, chain=[], root_certificate=None, private_key=None, backup_key=None):
-        data = host_data.copy() if (isinstance(host_data, dict)) else { 'ports': host_data }
-        defaults = { 'ports': [443], 'usage': 'pkix-ee', 'selector': 'spki', 'protocol': 'tcp', 'ttl': 300 }
-        for key in defaults:
-            if (key not in data):
-                data[key] = defaults[key]
-        data['certificate'] = certificate
-        data['chain'] = chain
-        data['root_certificate'] = root_certificate
-        data['private_key'] = private_key
-        data['backup_key'] = backup_key
-        if (not isinstance(data['ports'], list)):
-            data['ports'] = [data['ports']]
+    def _tlsa_data(self, records, certificate=None, chain=[], root_certificate=None, private_key=None, backup_key=None):
+        data = []
+        for record in records:
+            if (isinstance(record, str)):
+                record = { 'host': record }
+            data.append(TLSAData(record.get('host', '@'), record.get('port', 443),
+                                 record.get('usage', 'pkix-ee'), record.get('selector', 'spki'),
+                                 record.get('protocol', 'tcp'), record.get('ttl', 300),
+                                 certificate, chain, root_certificate, private_key, backup_key))
         return data
 
     def _set_tlsa_records(self, zone_name, zone_key, tlsa_records):
         usage = { 'pkix-ta': '0', 'pkix-ee': '1', 'dane-ta': '2', 'dane-ee': '3' }
         selector = { 'cert': '0', 'spki': '1' }
         updates = []
-        for host_name, tlsa_data in tlsa_records.items():
-            host_name = zone_name if ('@' == host_name) else (host_name + '.' + zone_name)
-            if (tlsa_data['usage'] in usage):
-                usage_id = usage[tlsa_data['usage']]
+        name_server = self._get_primary_name_server(zone_name)
+        for tlsa_data in tlsa_records:
+            host_name = zone_name if ('@' == tlsa_data.host) else (tlsa_data.host + '.' + zone_name)
+            if (tlsa_data.usage in usage):
+                usage_id = usage[tlsa_data.usage]
             else:
-                self._warn('Unknown TLSA usage ', tlsa_data['usage'], '\n')
+                self._warn('Unknown TLSA usage ', tlsa_data.usage, '\n')
                 usage_id = usage['pkix-ee']
-            if ('cert' == tlsa_data['selector']):
-                if (tlsa_data['usage'] in ('pkix-ee', 'dane-ee')):
-                    certificates = [tlsa_data['certificate']]
+            if ('cert' == tlsa_data.selector):
+                if (tlsa_data.usage in ('pkix-ee', 'dane-ee')):
+                    certificates = [tlsa_data.certificate]
                 else:
-                    certificates = tlsa_data['chain'] + [tlsa_data['root_certificate']]
+                    certificates = tlsa_data.chain + [tlsa_data.root_certificate]
                 keys = []
             else:
                 certificates = []
-                if (tlsa_data['usage'] in ('pkix-ee', 'dane-ee')):
-                    keys = [self._public_key_bytes(tlsa_data['private_key']), self._public_key_bytes(tlsa_data['backup_key'])]
+                if (tlsa_data.usage in ('pkix-ee', 'dane-ee')):
+                    keys = [self._public_key_bytes(tlsa_data.private_key), self._public_key_bytes(tlsa_data.backup_key)]
                 else:
-                    keys = ([self._certificate_public_key_bytes(certificate) for certificate in tlsa_data['chain']]
-                            + [self._certificate_public_key_bytes(tlsa_data['root_certificate'])])
+                    keys = ([self._certificate_public_key_bytes(certificate) for certificate in tlsa_data.chain]
+                            + [self._certificate_public_key_bytes(tlsa_data.root_certificate)])
 
-            for port in tlsa_data['ports']:
-                record = '_{port}._{protocol}.{host} {ttl} TLSA'.format(port=port, host=host_name, **tlsa_data)
-                updates.append('update delete {record}'.format(record=record))
-                record += ' ' + usage_id
+            record_name = '_{port}._{protocol}.{host}.'.format(host=host_name, port=tlsa_data.port, protocol=tlsa_data.protocol)
+            records = []
+            for certificate in certificates:
+                if (certificate):
+                    records.append('{usage} 0 1 {digest}'.format(usage=usage_id, digest=self._certificate_digest(certificate, 'sha256')))
+                    records.append('{usage} 0 2 {digest}'.format(usage=usage_id, digest=self._certificate_digest(certificate, 'sha512')))
+            for key_bytes in keys:
+                if (key_bytes):
+                    records.append('{usage} 1 1 {digest}'.format(usage=usage_id, digest=hashlib.sha256(key_bytes).hexdigest()))
+                    records.append('{usage} 1 2 {digest}'.format(usage=usage_id, digest=hashlib.sha512(key_bytes).hexdigest()))
 
-                for certificate in certificates:
-                    if (certificate):
-                        updates.append('update add {record} 0 1 {digest}'.format(record=record, digest=self._certificate_digest(certificate, 'sha256')))
-                        updates.append('update add {record} 0 2 {digest}'.format(record=record, digest=self._certificate_digest(certificate, 'sha512')))
-                for key_bytes in keys:
-                    if (key_bytes):
-                        updates.append('update add {record} 1 1 {digest}'.format(record=record, digest=hashlib.sha256(key_bytes).hexdigest()))
-                        updates.append('update add {record} 1 2 {digest}'.format(record=record, digest=hashlib.sha512(key_bytes).hexdigest()))
-        self._update_zone(updates, zone_name, zone_key, 'Set TLSA')
+            current_records = self._lookup_tlsa_records(name_server, host_name, tlsa_data.port, tlsa_data.protocol)
+            if (len(records) == len(current_records)):
+                for record in records:
+                    if (record not in current_records):
+                        break
+                else:
+                    self._note('TLSA records already present for ', record_name, '\n')
+                    continue
+
+            updates.append('update delete {record_name} {ttl} TLSA'.format(record_name=record_name, ttl=tlsa_data.ttl))
+            for record in records:
+                updates.append('update add {record_name} {ttl} TLSA {record}'.format(record_name=record_name, record=record, ttl=tlsa_data.ttl))
+        if (updates):
+            self._update_zone(updates, zone_name, zone_key, 'Set TLSA')
 
     def _remove_tlsa_records(self, zone_name, zone_key, tlsa_records):
         updates = []
-        for host_name, tlsa_data in tlsa_records.items():
-            host_name = zone_name if ('@' == host_name) else (host_name + '.' + zone_name)
-            updates += ['update delete _{port}._{proto}.{host} TLSA'.format(port=port, proto=tlsa_data['protocol'], host=host_name)
-                            for port in tlsa_data['ports']]
+        for tlsa_data in tlsa_records:
+            host_name = zone_name if ('@' == tlsa_data.host) else (tlsa_data.host + '.' + zone_name)
+            updates.append('update delete _{port}._{proto}.{host}. TLSA'.format(port=tlsa_data.port, proto=tlsa_data.protocol, host=host_name))
         self._update_zone(updates, zone_name, zone_key, 'Remove TLSA')
 
     def _reload_service(self, service_name):
@@ -553,10 +589,32 @@ class AcmeManager(object):
     def _chain_file_path(self, file_name, file_extension='.chain'):
         return os.path.join(self._directory('chain'), file_name + file_extension)
 
+    def load_chain(self, file_name):
+        chain = []
+        try:
+            chain_file_path = self._chain_file_path(file_name)
+            if (os.path.isfile(chain_file_path)):
+                with open(chain_file_path) as chain_file:
+                    pem_data = chain_file.read()
+                    index = 0
+            else:
+                with open(self._certificate_file_path(file_name)) as certificate_file:
+                    pem_data = certificate_file.read()
+                    index = 1
+            certificate_pems = re.findall('-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----', pem_data, re.DOTALL)[index:]
+            for certificate_pem in certificate_pems:
+                chain.append(jose.ComparableX509(OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, certificate_pem.encode('ascii'))))
+        except:
+            pass
+        return chain
+
     def save_chain(self, file_name, chain):
         with FileTransaction(self._chain_file_path(file_name), 0o644) as transaction:
             self._save_chain(transaction.file, chain)
         return transaction
+
+    def archive_chain(self, file_name, archive_name='', archive_date=None):
+        self._archive_file(self._chain_file_path(file_name), archive_name=archive_name, archive_date=archive_date)
 
     def _save_chain(self, chain_file, chain, lead_in=''):
         for chain_certificate in chain:
@@ -885,7 +943,6 @@ class AcmeManager(object):
     def process_certificates(self, private_key_names=[]):
         private_keys = self.config.get('private_keys', {})
         updated_key_zones = set()
-        updated_tlsa_zones = collections.OrderedDict()
         updated_services = set()
         processed_keys = []
 
@@ -1066,26 +1123,11 @@ class AcmeManager(object):
                         for zone_name in certificate_data.config['alt_names']:
                             if (not self._zone_key(zone_name)):
                                 updated_key_zones.add(zone_name)
-                    tlsa_records = certificate_data.config.get('tlsa_records', {})
-                    for zone_name in tlsa_records:
-                        if (self._zone_key(zone_name)):
-                            if (zone_name not in updated_tlsa_zones):
-                                updated_tlsa_zones[zone_name] = collections.OrderedDict()
-                            for host_name in tlsa_records[zone_name]:
-                                updated_tlsa_zones[zone_name][host_name] = self._tlsa_data(
-                                    tlsa_records[zone_name][host_name],
-                                    certificate=certificate_data.certificate, chain=certificate_data.chain,
-                                    root_certificate=root_certificate,
-                                    private_key=private_key_data.key, backup_key=backup_key)
-                        else:
-                            self._warn('No update key configured for zone ', zone_name, ' unable to set TLSA records\n')
             except Exception as error:
                 self._warn('Unable to install keys and certificates for ', private_key_name, '\n', error, '\n')
 
         for zone_name in updated_key_zones:
             self._reload_zone(zone_name)
-        for zone_name in updated_tlsa_zones:
-            self._set_tlsa_records(zone_name, self._zone_key(zone_name), updated_tlsa_zones[zone_name])
         for service_name in updated_services:
             self._reload_service(service_name)
 
@@ -1113,7 +1155,9 @@ class AcmeManager(object):
                 for certificate_name in revoked_certificates:
                     self.archive_certificate(certificate_name, archive_name=private_key_name, archive_date=archive_date)
                     self.archive_certificate(certificate_name + '+root', archive_name=private_key_name, archive_date=archive_date)
+                    self.archive_chain(certificate_name, archive_name=private_key_name, archive_date=archive_date)
                     self.archive_private_key(certificate_name + '_full', archive_name=private_key_name, archive_date=archive_date)
+
                     if (not self._settings('slave_mode')):
                         for zone_name in certificates[certificate_name]['alt_names']:
                             if (not self._zone_key(zone_name)):
@@ -1122,9 +1166,8 @@ class AcmeManager(object):
                     for zone_name in tlsa_records:
                         if (self._zone_key(zone_name)):
                             if (zone_name not in updated_tlsa_zones):
-                                updated_tlsa_zones[zone_name] = collections.OrderedDict()
-                            for host_name in tlsa_records[zone_name]:
-                                updated_tlsa_zones[zone_name][host_name] = self._tlsa_data(tlsa_records[zone_name][host_name])
+                                updated_tlsa_zones[zone_name] = []
+                            updated_tlsa_zones[zone_name] += self._tlsa_data(tlsa_records[zone_name])
                         else:
                             self._warn('No update key configured for zone ', zone_name, ' unable to remove TLSA records\n')
                 if (len(revoked_certificates) == len(certificates)):
@@ -1138,6 +1181,41 @@ class AcmeManager(object):
             self._reload_zone(zone_name)
         for zone_name in updated_tlsa_zones:
             self._remove_tlsa_records(zone_name, self._zone_key(zone_name), updated_tlsa_zones[zone_name])
+
+    def update_tlsa_records(self, private_key_names):
+        private_keys = self.config.get('private_keys', {})
+        tlsa_zones = collections.OrderedDict()
+
+        root_certificate = self.load_certificate(os.path.join(os.path.dirname(self.config_file_path), 'root_cert'))
+
+        for private_key_name in private_keys:
+            if (private_key_names and (private_key_name not in private_key_names)):
+                continue
+
+            private_key, _ = self.load_private_key(private_key_name)
+            backup_key, _ = self.load_private_key(private_key_name + '_backup')
+
+            certificates = private_keys[private_key_name].get('certificates', {})
+            for certificate_name in certificates:
+                tlsa_records = certificates[certificate_name].get('tlsa_records', {})
+                if (tlsa_records):
+                    certificate = self.load_certificate(certificate_name)
+                    chain = self.load_chain(certificate_name)
+
+                    for zone_name in tlsa_records:
+                        if (self._zone_key(zone_name)):
+                            if (zone_name not in tlsa_zones):
+                                tlsa_zones[zone_name] = []
+                            tlsa_zones[zone_name] += self._tlsa_data(
+                                tlsa_records[zone_name],
+                                certificate=certificate, chain=chain,
+                                root_certificate=root_certificate,
+                                private_key=private_key, backup_key=backup_key)
+                        else:
+                            self._warn('No update key configured for zone ', zone_name, ' unable to set TLSA records\n')
+
+        for zone_name in tlsa_zones:
+            self._set_tlsa_records(zone_name, self._zone_key(zone_name), tlsa_zones[zone_name])
 
     def _process_running(self, pid_file_path):
         try:
@@ -1161,9 +1239,14 @@ class AcmeManager(object):
                     self._error('Revocation must explicitly specify private key names\n')
                 else:
                     self.revoke_certificates(self.args.private_key_names)
+            elif (self.args.auth):
+                self.process_authorizations(self.args.private_key_names)
+            elif (self.args.tlsa):
+                self.update_tlsa_records(self.args.private_key_names)
             else:
                 self.process_authorizations(self.args.private_key_names)
                 self.process_certificates(self.args.private_key_names)
+                self.update_tlsa_records(self.args.private_key_names)
             del self.acme_client
         finally:
             os.remove(pid_file_path)
