@@ -138,6 +138,7 @@ class AcmeManager(object):
             'pin_subdomains': True,
             'renewal_days': 30,
             'expiration_days': 730,
+            'auto_rollover': False,
             'max_dns_lookup_attempts': 30,
             'dns_lookup_delay': 10,
             'max_authorization_attempts': 30,
@@ -492,6 +493,12 @@ class AcmeManager(object):
 
     def archive_private_key(self, file_name, archive_name='', archive_date=None):
         self._archive_file(self._private_key_file_path(file_name), archive_name=archive_name, archive_date=archive_date)
+
+    def _time_to_rollover(self, backup_key_timestamp, expiration_days):
+        if (backup_key_timestamp and expiration_days):
+            backup_key_modified_time = datetime.datetime.fromtimestamp(backup_key_timestamp)
+            return (expiration_days < (datetime.datetime.now() - backup_key_modified_time).days)
+        return False
 
     def _safe_to_rollover(self, backup_key_timestamp, hpkp_days):
         if (backup_key_timestamp and hpkp_days):
@@ -957,8 +964,10 @@ class AcmeManager(object):
 
             backup_key, backup_key_timestamp = self.load_private_key(private_key_name + '_backup')
             hpkp_days = private_keys[private_key_name].get('hpkp_days', self._settings('hpkp_days'))
+            expiration_days = private_keys[private_key_name].get('expiration_days') or self._settings('expiration_days')
+
             rollover = False
-            if (self.args.rollover):
+            if (self.args.rollover or (self._settings('auto_rollover') and self._time_to_rollover(backup_key_timestamp, expiration_days))):
                 if (self.args.force_rollover or self._safe_to_rollover(backup_key_timestamp, hpkp_days)):
                     rollover = True
                 else:
@@ -972,12 +981,9 @@ class AcmeManager(object):
                 backup_key, backup_key_timestamp = None, None
                 rolled_private_key = True
 
-            if (private_key and not rolled_private_key and self._safe_to_rollover(backup_key_timestamp, hpkp_days)):
-                backup_key_modified_time = datetime.datetime.fromtimestamp(backup_key_timestamp)
-                backup_key_age = (datetime.datetime.now() - backup_key_modified_time).days
-                expiration_days = private_keys[private_key_name].get('expiration_days') or self._settings('expiration_days')
-                if (expiration_days < backup_key_age):
-                    self._status('Backup key for ', private_key_name, ' is ', backup_key_age, ' days old and has expired. Use "--rollover" to replace.\n')
+            if (self._time_to_rollover(backup_key_timestamp, expiration_days) and private_key
+                and not rolled_private_key and self._safe_to_rollover(backup_key_timestamp, hpkp_days)):
+                self._status('Backup key for ', private_key_name, ' has expired. Use "--rollover" to replace.\n')
 
             if (not private_key):
                 self._status('Generating primary key for ', private_key_name, '\n')

@@ -373,8 +373,14 @@ The default value is 'true'.
 The default value is '30'.
 * 'expiration_days' specifies the number of days that private keys should be used for.
 The dafault value is '730' (two years).
-When the backup key reaches this age, the tool will notify the user that a key rollover should be performed.
-Note that key rollovers must be coordinated between the master and slaves and will therefore not be automatically performed.
+When the backup key reaches this age,
+the tool will notify the user that a key rollover should be performed,
+or automatically rollover the private key if 'auto_rollover' is set to 'true'.
+* 'auto_rollover' specifies if the tool should automatically rollover private keys that have expired.
+The default value is 'false'.
+Note that when running in a master/slave configuration and sharing private keys between the master and slave,
+key rollovers must be performed on the master and manually transferred to the slave,
+therefore automatic rollovers should not be used unless running stand-alone.
 * 'max_dns_lookup_attempts' specifies the number of times to check for deployed DNS records before attempting authorizations.
 The default value is '60'.
 * 'dns_lookup_delay' specifies the number of seconds to wait between DNS lookups.
@@ -913,7 +919,7 @@ or have changes to the configured common name, or subject alternative names,
 or no longer match their associated private key files.
 
 If a backup private key has passed its expiration date,
-the tool will emit a warning recommending that the private key be rolled over,
+the tool will rollover the private key or emit a warning recommending that the private key be rolled over,
 see the Private Key Rollover section for more information.
 
 If a certificate needs to be renewed or has been modified,
@@ -969,7 +975,8 @@ or immediately if it is believed that the primary private key may have been comp
 This tool maintains a backup private key for each primary private key and generates pinning information including the backup key as appropriate to allow smooth transitions to the backup key.
 
 When the backup private key reaches the age specified via the 'expiration_days' setting,
-the tool will notify you that it is time to rollover the private key.
+the tool will notify you that it is time to rollover the private key,
+unless the 'auto_rollover' setting has been set to 'true'.
 
 The rollover process will archive the current primary private key,
 re-issue certificates using the existing backup key as the new primary key,
@@ -977,7 +984,7 @@ generate a new backup private key,
 generate new custom Diffie-Hellman parameters,
 and reset HPKP headers and TLSA records as appropriate.
 
-To rollover private keys, simply run the tool with the '--rollover' option.
+To manually rollover private keys, simply run the tool with the '--rollover' option.
 You can specify the names of individual private keys on the command line to rollover,
 otherwise all private keys will be rolled over.
 
@@ -1062,6 +1069,7 @@ The slave server may maintain TLSA records if remote DNS updates are configured 
 otherwise it is recommended to use 'spki' selectors for TLSA records so that certificate renewals on the slave will not invalidate TLSA records.
 
 If private keys are shared between a master and slave,
-be sure to only perform private key rollovers on the master and copy new private key files to the slaves after the rollover.
+be sure to turn off 'auto_rollover' and only perform private key rollovers on the master.
+After a private key rollover, copy the new primary and backup private key files to the slaves.
 The slave will automatically detect the new private key and re-issue certificates on the next run.
 

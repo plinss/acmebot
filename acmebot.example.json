@@ -13,6 +13,7 @@
         "pin_subdomains": true,
         "renewal_days": 30,
         "expiration_days": 730,
+        "auto_rollover": false,
         "max_dns_lookup_attempts": 60,
         "dns_lookup_delay": 10,
         "max_authorization_attempts": 30,
