@@ -591,7 +591,7 @@ Note that a certificate configured in the 'certificates' section is equivalent t
 As such, it is an error to specify a certificate using the same name in both the 'certificates' and 'private_keys' sections.
 
 The private key and certificate settings are identical to those specified in the 'certificates' section,
-except settings relevant to the private key: 'key_size', 'expiration_days', 'hpkp_days', and 'pin_subdomains' are specified in the private key object rather than the certificate object.
+except settings relevant to the private key: 'key_size', 'expiration_days', 'auto_rollover', 'hpkp_days', and 'pin_subdomains' are specified in the private key object rather than the certificate object.
 
 Example:
 
