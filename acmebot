@@ -708,7 +708,7 @@ class AcmeManager(object):
                 if ('certificates' not in private_keys[certificate_name]):
                     private_keys[certificate_name]['certificates'] = collections.OrderedDict()
                 if (certificate_name not in private_keys[certificate_name]['certificates']):
-                    for config_key in ('key_size', 'expiration_days', 'hpkp_days', 'pin_subdomains'):
+                    for config_key in ('key_size', 'expiration_days', 'auto_rollover', 'hpkp_days', 'pin_subdomains'):
                         if ((config_key in certificates[certificate_name]) and (config_key not in private_keys[certificate_name])):
                             private_keys[certificate_name][config_key] = certificates[certificate_name][config_key]
                             del certificates[certificate_name][config_key]
@@ -964,10 +964,12 @@ class AcmeManager(object):
 
             backup_key, backup_key_timestamp = self.load_private_key(private_key_name + '_backup')
             hpkp_days = private_keys[private_key_name].get('hpkp_days', self._settings('hpkp_days'))
-            expiration_days = private_keys[private_key_name].get('expiration_days') or self._settings('expiration_days')
+            expiration_days = private_keys[private_key_name].get('expiration_days', self._settings('expiration_days'))
 
             rollover = False
-            if (self.args.rollover or (self._settings('auto_rollover') and self._time_to_rollover(backup_key_timestamp, expiration_days))):
+            if (self.args.rollover
+                 or (private_keys[private_key_name].get('auto_rollover', self._settings('auto_rollover'))
+                     and self._time_to_rollover(backup_key_timestamp, expiration_days))):
                 if (self.args.force_rollover or self._safe_to_rollover(backup_key_timestamp, hpkp_days)):
                     rollover = True
                 else:

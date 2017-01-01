@@ -376,6 +376,7 @@ The dafault value is '730' (two years).
 When the backup key reaches this age,
 the tool will notify the user that a key rollover should be performed,
 or automatically rollover the private key if 'auto_rollover' is set to 'true'.
+Automatic rollover and expiration notices can be disabled by setting this to '0'.
 * 'auto_rollover' specifies if the tool should automatically rollover private keys that have expired.
 The default value is 'false'.
 Note that when running in a master/slave configuration and sharing private keys between the master and slave,
@@ -412,6 +413,7 @@ Example:
             "pin_subdomains": true,
             "renewal_days": 30,
             "expiration_days": 730,
+            "auto_rollover": false,
             "max_dns_lookup_attempts": 60,
             "dns_lookup_delay": 10,
             "max_authorization_attempts": 30,
@@ -542,7 +544,12 @@ Custom elliptical curve paramaters may be ommitted from the certificate by setti
 The default value is the value specified in the 'settings' section.
 * 'expiration_days' specifies the number of days that the backup private key should be considered valid.
 The default value is the value specified in the 'settings' section.
-After this period, the tool will recommend rolling over the private key.
+When the backup key reaches this age,
+the tool will notify the user that a key rollover should be performed,
+or automatically rollover the private key if 'auto_rollover' is set to 'true'.
+Automatic rollover and expiration notices can be disabled by setting this to '0'.
+* 'auto_rollover' specifies if the tool should automatically rollover the private key when it expires.
+The default value is the value specified in the 'settings' section.
 * 'hpkp_days' specifies the number of days that HPKP pins should be cached by clients.
 The default value is the value specified in the 'settings' section.
 * 'pin_subdomains' specifies whether the 'includeSubdomains' directive should be included in the HPKP headers.
@@ -563,6 +570,7 @@ Example:
                 "ecparam_curve": "secp384r1",
                 "key_size": 4096,
                 "expiration_days": 730,
+                "auto_rollover": false,
                 "hpkp_days": 30,
                 "pin_subdomains": true
             }
