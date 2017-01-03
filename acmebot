@@ -679,8 +679,8 @@ class AcmeManager(object):
         except:
             return None
 
-    def _param_file_path(self, file_name, file_extension='.param'):
-        return os.path.join(self._directory('param'), file_name + file_extension)
+    def _param_file_path(self, file_name, file_extension='.pem'):
+        return os.path.join(self._directory('param'), file_name + '_param' + file_extension)
 
     def params_present(self, file_name):
         return os.path.isfile(self._param_file_path(file_name))

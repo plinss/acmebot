@@ -260,7 +260,7 @@ This file is useful for configuring OSCP stapling on Nginx servers.
 ### Diffie-Hellman Parameter File
 
 If custom Diffie-Hellman parameters or a custom elliptical curve are configured,
-a file will be created in /etc/ssl/private, named &lt;filename&gt;.param,
+a file will be created in /etc/ssl/private, named &lt;filename&gt;_param.pem,
 containing the Diffie-Hellman parameters and elliptical curve paramaters.
 
 This file will not be created if the 'param' directory is set to 'null'.
@@ -319,7 +319,7 @@ For Nginx the /etc/nginx/snippets/ssl/example.com file would contain:
     ssl_certificate         /etc/ssl/certs/example.com.ecdsa.pem;   # requires nginx 1.11.0+ to use multiple certificates
     ssl_certificate_key     /etc/ssl/private/example.com.ecdsa.key;
     ssl_trusted_certificate /etc/ssl/certs/example.com+root.rsa.pem;
-    ssl_dhparam             /etc/ssl/certs/example.com.param;
+    ssl_dhparam             /etc/ssl/certs/example.com_param.pem;
     ssl_ecdh_curve secp384r1;
     add_header Strict-Transport-Security "max-age=31536000";
     include /etc/ssl/hpkp/example.com.nginx;
