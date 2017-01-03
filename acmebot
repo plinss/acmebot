@@ -630,8 +630,8 @@ class AcmeManager(object):
         if (ecparam_pem):
             certificate_file.write('\n' + ecparam_pem)
 
-    def _chain_file_path(self, file_name, key_type, file_extension='.chain'):
-        return os.path.join(self._directory('chain'), file_name + self._key_type_suffix(key_type) + file_extension)
+    def _chain_file_path(self, file_name, key_type, file_extension='.pem'):
+        return os.path.join(self._directory('chain'), file_name + '_chain' + self._key_type_suffix(key_type) + file_extension)
 
     def load_chain(self, file_name, key_type):
         chain = []

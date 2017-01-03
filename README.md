@@ -231,7 +231,7 @@ such as ZNC.
 ### Intermediate Certificate Chain File
 
 If the certificate authority uses intermediate certificates to sign your certificates,
-a file will be created in /etc/ssl/certs, named &lt;filename&gt;.&lt;key-type&gt;.chain for each key type,
+a file will be created in /etc/ssl/certs, named &lt;filename&gt;_chain.&lt;key-type&gt;.pem for each key type,
 containing the intermediate certificates sent by the certificate authority.
 
 This file will not be created if the 'chain' directory is set to 'null'.
