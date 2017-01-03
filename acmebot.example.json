@@ -5,6 +5,7 @@
     "settings": {
         "slave_mode": false,
         "key_size": 4096,
+        "key_curve": "secp384r1",
         "dhparam_size": 2048,
         "ecparam_curve": "secp384r1",
         "file_user": "root",
@@ -34,6 +35,10 @@
         "update_key": "/etc/ssl/update_keys",
         "archive": "/etc/ssl/archive"
     },
+    "key_type_suffix": {
+        "rsa": ".rsa",
+        "ecdsa": ".ecdsa"
+    },
     "services": {
         "apache": "systemctl reload apache2",
         "coturn": "systemctl restart coturn",
@@ -53,21 +58,23 @@
             },
             "services": ["<service-name>"],
             "tlsa_records": {
-                "zone-name": {
-                    "<host-name>": <port-number>,
-                    "<host-name>": [<port-number>, <port-number>],
-                    "<host-name>": {
-                        "ports": [<port-number>, <port-number>],
+                "zone-name": [
+                    "<host-name>",
+                    {
+                        "host": "<host-name>",
+                        "port": <port-number>,
                         "usage": "pkix-ee",
                         "selector": "spki",
                         "protocol": "tcp",
                         "ttl": 300
                     }
-                }
+                ]
             },
             "dhparam_size": 2048,
             "ecparam_curve": "secp384r1",
+            "key_types": ["rsa", "ecdsa"],
             "key_size": 4096,
+            "key_curve": "secp384r1",
             "expiration_days": 730,
             "auto_rollover": false,
             "hpkp_days": 30,
@@ -97,10 +104,13 @@
                         ]
                     },
                     "dhparam_size": 2048,
-                    "ecparam_curve": "secp384r1"
+                    "ecparam_curve": "secp384r1",
+                    "key_types": ["rsa", "ecdsa"]
                 }
             },
+            "key_types": ["rsa", "ecdsa"],
             "key_size": 4096,
+            "key_curve": "secp384r1",
             "expiration_days": 730,
             "auto_rollover": false,
             "hpkp_days": 30,

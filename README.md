@@ -49,6 +49,12 @@ This tool automatically generates backup keys and switches to the pre-generated 
 The tool also automatically maintains proper HPKP header information.
 
 
+### Parallel RSA and ECDSA Certificates
+
+This tool can generate both RSA and ECDSA certificates.
+By default it will generate and maintain both types of certificates.
+
+
 ### Mixed Use of DNS and HTTP Authorization
 
 By default this tool performs dns-01 authorizartions for domain validation.
@@ -80,7 +86,7 @@ the /etc/acmebot directory,
 or the same directory that the acmebot tool is installed in.
 
 Note that when using dns-01 authorizations via a local DNS server,
-this tool needs to be able to add, remove, update DNS records.
+this tool needs to be able to add, remove, and update DNS records.
 This can be achieved by installing it on your master DNS server and using [bindtool] to manage the zone file,
 or you can use a custom shell script to update the DNS records.
 
@@ -89,7 +95,11 @@ an update key allowing the creation and deletion of TXT and optionally TLSA reco
 
 Optional: some services require a full certificate chain including the root (OSCP stapling on Nginx, for example).
 In order to generate these files,
-place a copy of the root certificate from your CA of choice in the same directory as the configuration file with the file name 'root_cert.pem'.
+place a copy of the root certificates from your certificate authority of choice in the same directory as the configuration file with the file names 'root_cert.rsa.pem' and 'root_cert.ecdsa.pem' for RSA and ECDSA certificate roots respectively.
+Note that the root certificates are the those used to sign RSA and ECDSA client certificates,
+and may not necessarily be of the same type,
+e.g. Let's Encrypt currently signs ECDSA certificates with an RSA root.
+If your certificate authority uses RSA certificate to sign ECDSA certificates types, place that RSA root certificate in 'root_cert.ecdsa.pem'.
 The root certificate for Let's Encrypt can be obtained [here](https://letsencrypt.org/certificates/).
 
 
@@ -103,7 +113,7 @@ it is meant to show all possible configuration options,
 rather than demonstrate a basic simple configuration.
 
 The only items that must be present in the configuration file to create and maintain a certificate are your account email address,
-the file name, and subject alternative names for the certificate.
+and the file name, and subject alternative names for the certificate.
 By default, the common name of the certificate will be the same as the certificate file name.
 
 For example:
@@ -166,8 +176,9 @@ the tool will generate a public/private key pair used for client authentication 
 register an account with the certificate authority,
 automatically accept the certificate authority's terms of service,
 obtain authorizations for each configured domain name,
-generate primary and backup private keys as needed for the configured certificates,
+generate primary private keys as needed for the configured certificates,
 issue certificates,
+generate backup private keys,
 generate custom Diffie-Hellman parameters,
 and install the certificates and private keys into /etc/ssl/certs and /etc/ssl/private.
 
@@ -177,10 +188,11 @@ See [Staging Environment](https://letsencrypt.org/docs/staging-environment/) for
 When switching from the staging to production servers,
 you should delete the client key and registration files (/var/local/acmebot/*.json) to ensure a fresh registration in the production environment.
 
+
 ## File Locations
 
 After a successful certificate issuance,
-up to nine files will be created per certificate.
+up to fifteen files will be created per certificate.
 
 The locations for these files can be controlled via the 'directories' section of the configuration file.
 The default locations are used here for brevity.
@@ -193,49 +205,53 @@ This is designed to prevent a mismatch between certificates and private keys sho
 
 ### Private Keys
 
-Two private key files will be created in /etc/ssl/private.
-The primary: &lt;filename&gt;.key; and a backup key: &lt;filename&gt;_backup.key.
+Two private key files will be created in /etc/ssl/private for each key type.
+The primary: &lt;filename&gt;.&lt;key-type&gt;.key; and a backup key: &lt;filename&gt;_backup.&lt;key-type&gt;.key.
 
 The private key files will be written in PEM format and will be readable by owner and group.
 
 
 ### Certificate Files
 
-Two certificate files will be created,
-one in /etc/ssl/certs, named &lt;filename&gt;.pem,
+Two certificate files will be created for each key type,
+one in /etc/ssl/certs, named &lt;filename&gt;.&lt;key-type&gt;.pem,
 containing the certificate,
 followed by any intermediate certificates sent by the certificate authority,
 followed by custom Diffie-Hellman and elliptic curve paramaters;
-the second file will be created in /etc/ssl/private, named &lt;filename&gt;_full.key,
+the second file will be created in /etc/ssl/private, named &lt;filename&gt;_full.&lt;key-type&gt;.key,
 and will contain the private key,
 followed by the certificate,
 followed by any intermediate certificates sent by the certificate authority,
 followed by custom Diffie-Hellman and elliptic curve paramaters.
 
-The &lt;filename&gt;_full.key file is useful for services that require both the private key and certificate to be in the same file,
+The &lt;filename&gt;_full.&lt;key-type&gt;.key file is useful for services that require both the private key and certificate to be in the same file,
 such as ZNC.
 
 
 ### Intermediate Certificate Chain File
 
 If the certificate authority uses intermediate certificates to sign your certificates,
-a file will be created in /etc/ssl/certs, named &lt;filename&gt;.chain,
+a file will be created in /etc/ssl/certs, named &lt;filename&gt;.&lt;key-type&gt;.chain for each key type,
 containing the intermediate certificates sent by the certificate authority.
 
 This file will not be created if the 'chain' directory is set to 'null'.
 
+Note that the certificate authority may use a different type of certificate as intermediates,
+e.g. an ECDSA client certificate may be signed by an RSA intermediate,
+and therefore the intermediate certificate key type may not match the file name (or certificate type).
+
 
 ### Full Chain Certificate File
 
-If the 'root_cert.pem' file was created (see Installation),
+If the 'root_cert.&lt;key-type&gt;.pem' file is present (see Installation),
 then an additional certificate file will be generated in /etc/ssl/certs,
-named &lt;filename&gt;+root.pem.
+named &lt;filename&gt;+root.&lt;key-type&gt;.pem for each key type.
 This file will contain the certificate,
 followed by any intermediate certificates sent by the certificate authority,
 followed by the root certificate,
 followed by custom Diffie-Hellman and elliptic curve paramaters.
 
-If the 'root_cert.pem' file is not found in the same directory as the configuration file,
+If the 'root_cert.&lt;key-type&gt;.pem' file is not found in the same directory as the configuration file,
 this certificate file will not be created.
 
 This file is useful for configuring OSCP stapling on Nginx servers.
@@ -253,7 +269,7 @@ This file will not be created if the 'param' directory is set to 'null'.
 ### Hypertext Public Key Pin (HPKP) Files
 
 Two additional files will be created in /etc/ssl/hpkp, named  &lt;filename&gt;.apache and &lt;filename&gt;.nginx.
-These files contain HTTP header directives setting HPKP for both the primary and backup private keys.
+These files contain HTTP header directives setting HPKP for both the primary and backup private keys for each key type.
 
 Each file is suitable to be included in the server configuration for either Apache or Nginx respectively.
 
@@ -285,8 +301,10 @@ Another good practice it to isolate the configuration for each certificate into 
 for example using Apache,
 create the file /etc/apache2/snippets/ssl/example.com containing:
 
-    SSLCertificateFile    /etc/ssl/certs/example.com.pem
-    SSLCertificateKeyFile /etc/ssl/private/example.com.key
+    SSLCertificateFile    /etc/ssl/certs/example.com.rsa.pem
+    SSLCertificateKeyFile /etc/ssl/private/example.com.rsa.key
+    SSLCertificateFile    /etc/ssl/certs/example.com.ecdsa.pem
+    SSLCertificateKeyFile /etc/ssl/private/example.com.ecdsa.key
     Header set Strict-Transport-Security "max-age=31536000"
     Include /etc/ssl/hpkp/example.com.apache
 
@@ -296,10 +314,12 @@ and then in each host configuration using that certificate, simply add:
 
 For Nginx the /etc/nginx/snippets/ssl/example.com file would contain:
 
-    ssl_certificate         /etc/ssl/certs/example.com.pem;
-    ssl_certificate_key     /etc/ssl/private/example.com.key;
-    ssl_trusted_certificate /etc/ssl/certs/example.com+root.pem;
-    ssl_dhparam             /etc/ssl/certs/example.com.pem;
+    ssl_certificate         /etc/ssl/certs/example.com.rsa.pem;
+    ssl_certificate_key     /etc/ssl/private/example.com.rsa.key;
+    ssl_certificate         /etc/ssl/certs/example.com.ecdsa.pem;   # requires nginx 1.11.0+ to use multiple certificates
+    ssl_certificate_key     /etc/ssl/private/example.com.ecdsa.key;
+    ssl_trusted_certificate /etc/ssl/certs/example.com+root.rsa.pem;
+    ssl_dhparam             /etc/ssl/certs/example.com.param;
     ssl_ecdh_curve secp384r1;
     add_header Strict-Transport-Security "max-age=31536000";
     include /etc/ssl/hpkp/example.com.nginx;
@@ -348,25 +368,30 @@ All of these need only be present when the desired value is different from the d
 The defalt value is 'false' (master mode).
 The master will obtain authorizations and issue certificates,
 a slave will not attempt to obtain authorizations but can issue certificates.
-* 'key_size' specifies the size (in bits) for private keys.
+* 'key_size' specifies the size (in bits) for RSA private keys.
 The default value is '4096'.
+RSA certificates can be turned off by setting this value to '0' or 'null'.
+* 'key_curve' specifies the curve to use for ECDSA private keys.
+The default value is 'secp384r1'.
+Available curves are 'secp256r1', 'secp384r1', and 'secp521r1'.
+ECDSA certificates can be turned off by setting this value to 'null'.
 * 'dhparam_size' specifies the size (in bits) for custom Diffie-Hellman parameters.
 The default value is '2048'.
-Custom Diffie-Hellman parameters can be turned off by setting this value to '0'.
-This value should at least be equal to half the 'key_size'.
+Custom Diffie-Hellman parameters can be turned off by setting this value to '0' or 'null'.
+This value should be at least be equal to half the 'key_size'.
 * 'ecparam_curve' speficies the curve to use for ECDHE negotiation.
 The default value is 'secp384r1'.
-Custom EC parameters can be turned off by setting this value to null.
+Custom EC parameters can be turned off by setting this value to 'null'.
 You can run 'openssl ecparam -list_curves' to find a list of available curves.
 * 'file_user' specifies the name of the user that will own certificate and private key files.
 The default value is 'root'.
-Note that this tool must run as root, or another user that has rights to set the file ownership.
+Note that this tool must run as root, or another user that has rights to set the file ownership to this user.
 * 'file_group' speficies the name of the group that will own certificate and private key files.
 The default value is 'ssl-cert'.
-Note that this tool must run as root, or another user that has rights to set the file ownership.
+Note that this tool must run as root, or another user that has rights to set the file ownership to this group.
 * 'hpkp_days' specifies the number of days that HPKP pins should be cached for.
 The default value is '30'.
-HPKP pin files can be turned off by setting this value to '0'.
+HPKP pin files can be turned off by setting this value to '0' or 'null'.
 * 'pin_subdomains' specifies whether the 'includeSubdomains' directive should be included in the HPKP headers.
 The default value is 'true'.
 * 'renewal_days' specifies the number of days before expiration when the tool will attempt to renew a certificate.
@@ -376,7 +401,7 @@ The dafault value is '730' (two years).
 When the backup key reaches this age,
 the tool will notify the user that a key rollover should be performed,
 or automatically rollover the private key if 'auto_rollover' is set to 'true'.
-Automatic rollover and expiration notices can be disabled by setting this to '0'.
+Automatic rollover and expiration notices can be disabled by setting this to '0' or 'null'.
 * 'auto_rollover' specifies if the tool should automatically rollover private keys that have expired.
 The default value is 'false'.
 Note that when running in a master/slave configuration and sharing private keys between the master and slave,
@@ -405,6 +430,7 @@ Example:
         "settings": {
             "slave_mode": false,
             "key_size": 4096,
+            "key_curve": "secp384r1",
             "dhparam_size": 2048,
             "ecparam_curve": "secp384r1",
             "file_user": "root",
@@ -535,23 +561,33 @@ Multiple zones may be specified.
 This may be omitted.
 * 'dhparam_size' specifies the number of bits to use for custom Diffie-Hellman paramaters for the certificate.
 The default value is the value specified in the 'settings' section.
-Custom Diffie-Hellman paramaters may be ommitted from the certificate by setting this to '0'.
+Custom Diffie-Hellman paramaters may be ommitted from the certificate by setting this to '0' or 'null'.
 The value should be at least equal to half the number of bits used for the private key.
 * 'ecparam_curve' specified the curve used for elliptical curve paramaters.
 The default value is the value specified in the 'settings' section.
-Custom elliptical curve paramaters may be ommitted from the certificate by setting this to an empty string or 'null'.
-* 'key_size' specifies the number of bits to use for the certificate's private key.
+Custom elliptical curve paramaters may be ommitted from the certificate by setting this to 'null'.
+* 'key_types' specifies the types of keys to create for this certificate.
+The default value is all available key types.
+Provide a list of key types to restrict the certificate to only those types.
+Available types are 'rsa' and 'ecdsa'.
+* 'key_size' specifies the number of bits to use for the certificate's RSA private key.
 The default value is the value specified in the 'settings' section.
+RSA certificates can be turned off by setting this value to '0' or 'null'.
+* 'key_curve' specifies the curve to use for ECDSA private keys.
+The default value is the value specified in the 'settings' section.
+Available curves are 'secp256r1', 'secp384r1', and 'secp521r1'.
+ECDSA certificates can be turned off by setting this value to 'null'.
 * 'expiration_days' specifies the number of days that the backup private key should be considered valid.
 The default value is the value specified in the 'settings' section.
 When the backup key reaches this age,
 the tool will notify the user that a key rollover should be performed,
 or automatically rollover the private key if 'auto_rollover' is set to 'true'.
-Automatic rollover and expiration notices can be disabled by setting this to '0'.
+Automatic rollover and expiration notices can be disabled by setting this to '0' or 'null'.
 * 'auto_rollover' specifies if the tool should automatically rollover the private key when it expires.
 The default value is the value specified in the 'settings' section.
 * 'hpkp_days' specifies the number of days that HPKP pins should be cached by clients.
 The default value is the value specified in the 'settings' section.
+HPKP pin files can be turned off by setting this value to '0' or 'null'.
 * 'pin_subdomains' specifies whether the 'includeSubdomains' directive should be included in the HPKP headers.
 The default value is the value specified in the 'settings' section.
 
@@ -568,7 +604,9 @@ Example:
                 "services": ["nginx"],
                 "dhparam_size": 2048,
                 "ecparam_curve": "secp384r1",
+                "key_types": ["rsa", "ecdsa"],
                 "key_size": 4096,
+                "key_curve": "secp384r1",
                 "expiration_days": 730,
                 "auto_rollover": false,
                 "hpkp_days": 30,
@@ -591,7 +629,8 @@ Note that a certificate configured in the 'certificates' section is equivalent t
 As such, it is an error to specify a certificate using the same name in both the 'certificates' and 'private_keys' sections.
 
 The private key and certificate settings are identical to those specified in the 'certificates' section,
-except settings relevant to the private key: 'key_size', 'expiration_days', 'auto_rollover', 'hpkp_days', and 'pin_subdomains' are specified in the private key object rather than the certificate object.
+except settings relevant to the private key: 'key_size', 'key_curve', 'expiration_days', 'auto_rollover', 'hpkp_days', and 'pin_subdomains' are specified in the private key object rather than the certificate object.
+The 'key_types' setting may be specified in the certificate, private key, or both.
 
 Example:
 
@@ -605,7 +644,8 @@ Example:
                         "alt_names": {
                             "example.com": ["@", "www"]
                         },
-                        "services": ["nginx"]
+                        "services": ["nginx"],
+                        "key_types": ["rsa"],
                         "dhparam_size": 2048,
                         "ecparam_curve": "secp384r1"
                     },
@@ -614,10 +654,14 @@ Example:
                             "example.com": ["mail", "smtp"]
                         },
                         "services": ["dovecot", "postfix"],
+                        "key_types": ["rsa", "ecdsa"]
                     }
                 },
+                "key_types": ["rsa", "ecdsa"],
                 "key_size": 4096,
+                "key_curve": "secp384r1",
                 "expiration_days": 730,
+                "auto_rollover": false,
                 "hpkp_days": 30,
                 "pin_subdomains": true
             }
@@ -625,7 +669,8 @@ Example:
         ...
     }
 
-The above example will generate a single primary/backup private key set and two certificates, 'example.com' and 'mail.example.com' both using the same private key.
+The above example will generate a single primary/backup private key set and two certificates, 'example.com' and 'mail.example.com' both using the same private keys.
+An ECDSA certicicate will only be generated for 'mail.example.com'.
 
 
 ### TLSA Records
@@ -819,6 +864,28 @@ Example:
     }
 
 
+### Key Type Suffix
+
+Each certificate and key file will have a suffix, just before the file extension,
+indicating the type of key the file is for.
+
+The default suffix used for each key type can be overridden in the 'key_type_suffix' section.
+If you are only using a single key type, or want to omit the suffix from one key type,
+set it to an empty string.
+Note that if using multiple key types the suffix must be unique or files will be overridden.
+
+Example:
+
+    {
+        ...
+        "key_type_suffix": {
+            "rsa": ".rsa",
+            "ecdsa": ".ecdsa"
+        },
+        ...
+    }
+
+
 ## Configuring Local DNS Updates
 
 In order to perform dns-01 authorizations,
@@ -913,15 +980,16 @@ On first run, the tool will generate a client key,
 register that key with the certificate authority,
 accept the certificate authority's terms and conditions,
 perform all needed domain authorizations,
-generate private keys,
+generate primary private keys,
 issue certificates,
+generate backup private keys,
 generate custom Diffie-Hellman parameters,
 install certificate and key files,
 reload services associated to the certificates,
 and update TLSA records.
 
 Each subsequent run will ensure that all authorizations remain valid,
-check if any backup private keys are past their expiration date,
+check if any backup private keys have passed their expiration date,
 check if any certificate's expiration dates are within the renewal window,
 or have changes to the configured common name, or subject alternative names,
 or no longer match their associated private key files.
@@ -984,7 +1052,8 @@ This tool maintains a backup private key for each primary private key and genera
 
 When the backup private key reaches the age specified via the 'expiration_days' setting,
 the tool will notify you that it is time to rollover the private key,
-unless the 'auto_rollover' setting has been set to 'true'.
+unless the 'auto_rollover' setting has been set to 'true',
+in which case it will automatically perform the rollover.
 
 The rollover process will archive the current primary private key,
 re-issue certificates using the existing backup key as the new primary key,
@@ -1043,7 +1112,7 @@ In some circumstances, it is useful to run the tool in a master/slave configurat
 In this setup, the master performs domain authorizations
 while the slave issues and maintains certificates.
 
-This setup is useful when the slave machine doesn not have the ability to perform domain authorizations,
+This setup is useful when the slave machine does not have the ability to perform domain authorizations,
 for example, an XMPP server behind a firewall that does not have port 80 open or access to a DNS server.
 
 To create a master/slave setup,
@@ -1063,11 +1132,12 @@ If the master server also issues certificates for the same domain names or paren
 you may want to copy the primary and backup private keys for those certificates to the slave.
 This will cause the slave certificates to use the same keys allowing HPKP headers to safey include subdomains.
 
-Set the slave 'slave_mode' setting to 'true' and configure desired certifiacates on the slave.
+Set the slave 'slave_mode' setting to 'true' and configure desired certificates on the slave.
 
 Run the tool on the slave server.
 
-When setting up cron jobs for the master and slave, be sure the slave runs several minutes after the master.
+When setting up cron jobs for the master and slave,
+be sure the slave runs several minutes after the master so that all authorizations will be complete.
 The master can theoretically take 'max_dns_lookup_attempts' x 'dns_lookup_delay' + 'max_authorization_attempts' x 'authorization_delay' seconds to obtain domain authorizations (15 minutes at the default settings).
 
 It is possible to run several slave servers for each master,
