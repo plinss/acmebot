@@ -758,12 +758,12 @@ class AcmeManager(object):
                 else:
                     self._error('Certificate ', certificate_name, ' already configured with private key\n')
             del self.config['certificates']
-            self.config['private_keys'] = private_keys
 
         for private_key_name in private_keys:
             key_certificates = private_keys[private_key_name].get('certificates', {})
             if (not key_certificates):
                 self._error('No certificates defined for private key ', private_key_name, '\n')
+            certificate_key_types = set()
             for certificate_name in key_certificates:
                 for zone_name in key_certificates[certificate_name].get('alt_names', {}):
                     common_name = key_certificates[certificate_name].get('common_name', certificate_name)
@@ -771,6 +771,10 @@ class AcmeManager(object):
                         break
                 else:
                     self._error('Certificate common name "', common_name, '" not listed in alt_names\n')
+                certificate_key_types |= set(key_certificates[certificate_name].get('key_types', self._key_types))
+            key_options = self._get_key_options(private_key_name)
+            private_keys[private_key_name]['key_types'] = [key_type for key_type in key_options if (key_type in certificate_key_types)]
+        self.config['private_keys'] = private_keys
 
     def connect_client(self):
         client_key_path = os.path.join(self.resource_dir, 'client_key.json')
