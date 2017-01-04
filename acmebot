@@ -772,7 +772,7 @@ class AcmeManager(object):
                 else:
                     self._error('Certificate common name "', common_name, '" not listed in alt_names\n')
                 certificate_key_types |= set(key_certificates[certificate_name].get('key_types', self._key_types))
-            key_options = self._get_key_options(private_key_name)
+            key_options = self._get_key_options(private_keys[private_key_name])
             private_keys[private_key_name]['key_types'] = [key_type for key_type in key_options if (key_type in certificate_key_types)]
         self.config['private_keys'] = private_keys
 
@@ -990,11 +990,10 @@ class AcmeManager(object):
         for authorization_resource in exhausted:
             self._status('Authorization timed out for ', authorization_resource.body.identifier.value, '\n')
 
-    def _get_key_options(self, private_key_name):
-        private_keys = self.config.get('private_keys', {})
-        key_size = private_keys[private_key_name].get('key_size', self._settings('key_size'))
-        key_curve = private_keys[private_key_name].get('key_curve', self._settings('key_curve'))
-        key_types = private_keys[private_key_name].get('key_types', self._key_types)
+    def _get_key_options(self, private_key_config):
+        key_size = private_key_config.get('key_size', self._settings('key_size'))
+        key_curve = private_key_config.get('key_curve', self._settings('key_curve'))
+        key_types = private_key_config.get('key_types', self._key_types)
         key_options = {}
         if (key_size and ('rsa' in key_types)):
             key_options['rsa'] = (key_size, )
@@ -1014,7 +1013,7 @@ class AcmeManager(object):
 
             self._debug('Processing private key ', private_key_name, '\n')
 
-            key_options = self._get_key_options(private_key_name)
+            key_options = self._get_key_options(private_keys[private_key_name])
             if (not key_options):
                 self._warn('No configured private key types for ', private_key_name, '\n')
                 continue
@@ -1250,7 +1249,7 @@ class AcmeManager(object):
 
         for private_key_name in private_key_names:
             if (private_key_name in private_keys):
-                key_options = self._get_key_options(private_key_name)
+                key_options = self._get_key_options(private_keys[private_key_name])
                 if (not key_options):
                     self._warn('No configured private key types for ', private_key_name, '\n')
                     continue
@@ -1322,7 +1321,7 @@ class AcmeManager(object):
             if (private_key_names and (private_key_name not in private_key_names)):
                 continue
 
-            key_options = self._get_key_options(private_key_name)
+            key_options = self._get_key_options(private_keys[private_key_name])
             if (not key_options):
                 self._warn('No configured private key types for ', private_key_name, '\n')
                 continue
