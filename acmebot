@@ -40,7 +40,7 @@ DNSTuple = collections.namedtuple('DNSTuple', ['datetime', 'name_server', 'domai
 AuthorizationTuple = collections.namedtuple('AuthorizationTuple', ['datetime', 'authorization_resource'])
 KeyData = collections.namedtuple('KeyData', ['key', 'timestamp'])
 PrivateKeyData = collections.namedtuple('PrivateKeyData', ['name', 'key_options', 'keys', 'backup_keys',
-                                                           'generated_key', 'rolled_key', 'issued_certificates'])
+                                                           'generated_key', 'rolled_key', 'changed_key', 'issued_certificates'])
 CertificateData = collections.namedtuple('CertificateData', ['certificate_name', 'key_type', 'certificate', 'chain', 'config'])
 TLSAData = collections.namedtuple('TLSAData', ['host', 'port', 'usage', 'selector', 'protocol', 'ttl',
                                                'certificates', 'chain', 'private_keys'])
@@ -1023,6 +1023,7 @@ class AcmeManager(object):
 
             rolled_private_key = False
             generated_private_key = False
+            changed_private_key = False
 
             backup_keys = {}
             youngest_key_timestamp = sys.maxsize
@@ -1117,6 +1118,7 @@ class AcmeManager(object):
                                 else:
                                     if (not self._private_key_matches_certificate(keys[key_type].key, existing_certificate)):
                                         self._status('Certificate ', certificate_name, ' public key does not match private key\n')
+                                        changed_private_key = True
                                     else:
                                         valid_duration = self._datetime_from_asn1_generaltime(existing_certificate.get_notAfter()) - datetime.datetime.now()
                                         if (valid_duration.days < 0):
@@ -1147,7 +1149,7 @@ class AcmeManager(object):
 
             if (issued_certificates):
                 processed_keys.append(PrivateKeyData(private_key_name, key_options, keys, backup_keys,
-                                                     generated_private_key, rolled_private_key, issued_certificates))
+                                                     generated_private_key, rolled_private_key, changed_private_key, issued_certificates))
 
 
         # install keys and certificates
@@ -1178,7 +1180,7 @@ class AcmeManager(object):
 
             hpkp_days = private_keys[private_key_name].get('hpkp_days', self._settings('hpkp_days'))
             if ((0 < hpkp_days) and (self._directory('hpkp'))
-                    and (private_key_data.generated_key or generated_backup_key or not self.hpkp_headers_present(private_key_name))):
+                    and (private_key_data.generated_key or private_key_data.changed_key or generated_backup_key or not self.hpkp_headers_present(private_key_name))):
                 keys = ([private_key_data.keys[key_type].key for key_type in private_key_data.key_options if private_key_data.keys[key_type].key]
                         + [private_key_data.backup_keys[key_type].key for key_type in private_key_data.key_options if private_key_data.backup_keys[key_type].key])
                 if (1 < len(keys)):
