@@ -1025,7 +1025,7 @@ class AcmeManager(object):
             generated_private_key = False
 
             backup_keys = {}
-            youngest_key_timestamp = datetime.datetime.max.timestamp()
+            youngest_key_timestamp = sys.maxsize
             oldest_key_timestamp = 0
             for key_type in key_options:
                 backup_key_data = self.load_private_key(private_key_name + '_backup', key_type)
