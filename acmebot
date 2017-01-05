@@ -302,7 +302,7 @@ class AcmeManager(object):
     def _key_type_suffix(self, key_type):
         return self._config('key_type_suffixes', key_type)
 
-    def _service_command(self, service_name):
+    def _service(self, service_name):
         return self._config('services', service_name)
 
     def _challenge_file_path(self, file_name, file_extension=''):

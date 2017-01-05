@@ -342,7 +342,7 @@ The file must adhere to standard JSON format.
 
 The file 'acmebot.example.json' provides a template of all configuration options and their default values.
 Entries inside angle brackets '&lt;example&gt;' must be replaced (without the angle brackets),
-all other values except referenced services may be removed unless you want to override the default values.
+all other values may be removed unless you want to override the default values.
 
 ### Account
 
