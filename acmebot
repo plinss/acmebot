@@ -130,42 +130,55 @@ class AcmeManager(object):
 
         self.config, self.config_file_path = self._load_config(self.args.config_path, ('.', os.path.join('/etc', self.script_name), script_dir))
         self._key_types = ('rsa', 'ecdsa')
-        self._settings_defaults = {
-            'slave_mode': False,
-            'key_size': 4096,
-            'key_curve': 'secp384r1',
-            'dhparam_size': 2048,
-            'ecparam_curve': 'secp384r1',
-            'file_user': 'root',
-            'file_group': 'ssl-cert',
-            'hpkp_days': 30,
-            'pin_subdomains': True,
-            'renewal_days': 30,
-            'expiration_days': 730,
-            'auto_rollover': False,
-            'max_dns_lookup_attempts': 30,
-            'dns_lookup_delay': 10,
-            'max_authorization_attempts': 30,
-            'authorization_delay': 10,
-            'acme_directory_url': 'https://acme-v01.api.letsencrypt.org/directory',
-            'reload_zone_command': '/etc/bind/reload-zone.sh',
-            'nsupdate_command': '/usr/bin/nsupdate'
-        }
-        self._directory_defaults = {
-            'pid': '/var/run',
-            'resource': os.path.join('/var/local', self.script_name),
-            'private_key': '/etc/ssl/private',
-            'certificate': '/etc/ssl/certs',
-            'chain': '/etc/ssl/certs',
-            'param': '/etc/ssl/private',
-            'challenge': '/etc/ssl/challenges',
-            'hpkp': '/etc/ssl/hpkp',
-            'update_key': '/etc/ssl/update_keys',
-            'archive': '/etc/ssl/archive'
-        }
-        self._key_type_suffix_defaults = {
-            'rsa': '.rsa',
-            'ecdsa': '.ecdsa'
+        self._config_defaults = {
+            'settings': {
+                'slave_mode': False,
+                'key_size': 4096,
+                'key_curve': 'secp384r1',
+                'dhparam_size': 2048,
+                'ecparam_curve': 'secp384r1',
+                'file_user': 'root',
+                'file_group': 'ssl-cert',
+                'hpkp_days': 30,
+                'pin_subdomains': True,
+                'renewal_days': 30,
+                'expiration_days': 730,
+                'auto_rollover': False,
+                'max_dns_lookup_attempts': 30,
+                'dns_lookup_delay': 10,
+                'max_authorization_attempts': 30,
+                'authorization_delay': 10,
+                'acme_directory_url': 'https://acme-v01.api.letsencrypt.org/directory',
+                'reload_zone_command': '/etc/bind/reload-zone.sh',
+                'nsupdate_command': '/usr/bin/nsupdate'
+            },
+            'directories': {
+                'pid': '/var/run',
+                'resource': os.path.join('/var/local', self.script_name),
+                'private_key': '/etc/ssl/private',
+                'certificate': '/etc/ssl/certs',
+                'chain': '/etc/ssl/certs',
+                'param': '/etc/ssl/private',
+                'challenge': '/etc/ssl/challenges',
+                'hpkp': '/etc/ssl/hpkp',
+                'update_key': '/etc/ssl/update_keys',
+                'archive': '/etc/ssl/archive'
+            },
+            'key_type_suffixes': {
+                'rsa': '.rsa',
+                'ecdsa': '.ecdsa'
+            },
+            'services': {
+                'apache': 'systemctl reload apache2',
+                'coturn': 'systemctl restart coturn',
+                'dovecot': 'systemctl restart dovecot',
+                'etherpad': 'systemctl restart etherpad',
+                'nginx': 'systemctl reload nginx',
+                'postfix': 'systemctl reload postfix',
+                'prosody': 'systemctl restart prosody',
+                'synapse': 'systemctl restart matrix-synapse',
+                'znc': 'systemctl restart znc'
+            }
         }
 
         self.resource_dir = os.path.join(script_dir, self._directory('resource'))
@@ -253,7 +266,7 @@ class AcmeManager(object):
             if (timestamp):
                 os.utime(new_file_path, (timestamp, timestamp))
             try:
-                os.chown(new_file_path, self._get_user_id(self._settings('file_user')), self._get_group_id(self._settings('file_group')))
+                os.chown(new_file_path, self._get_user_id(self._setting('file_user')), self._get_group_id(self._setting('file_group')))
             except PermissionError as error:
                 self._warn('Unable to set file ownership for ', new_file_path, '\n', error, '\n')
 
@@ -273,32 +286,33 @@ class AcmeManager(object):
                     os.rename(archived_file_path, original_file_path)
             raise error
 
-    def _account(self, key):
-        return self.config.get('account', {}).get(key, '')
+    def _config(self, section, key=None):
+        defaults = self._config_defaults.get(section, {})
+        return self.config.get(section, defaults).get(key, defaults.get(key)) if (key) else self.config.get(section, defaults)
 
-    def _settings(self, key):
-        return self.config.get('settings', self._settings_defaults).get(key, self._settings_defaults.get(key))
+    def _account(self, key):
+        return self._config('account', key)
+
+    def _setting(self, key):
+        return self._config('settings', key)
 
     def _directory(self, key):
-        return self.config.get('directories', self._directory_defaults).get(key, self._directory_defaults.get(key))
+        return self._config('directories', key)
 
     def _key_type_suffix(self, key_type):
-        return self.config.get('key_type_suffix', self._key_type_suffix_defaults).get(key_type, self._key_type_suffix_defaults.get(key_type))
+        return self._config('key_type_suffixes', key_type)
+
+    def _service_command(self, service_name):
+        return self._config('services', service_name)
 
     def _challenge_file_path(self, file_name, file_extension=''):
         return os.path.join(self._directory('challenge'), file_name + file_extension)
 
-    def _datetime_from_asn1_generaltime(self, general_time):
-        try:
-            return datetime.datetime.strptime(general_time.decode('ascii'), '%Y%m%d%H%M%SZ')
-        except ValueError:
-            return datetime.datetime.strptime(general_time.decode('ascii'), '%Y%m%d%H%M%S%z')
-
     def _http_challenge_directory(self, domain_name):
-        return self.config.get('http_challenges', {}).get(domain_name, None)
+        return self._config('http_challenges', domain_name)
 
     def _zone_key(self, zone_name):
-        key_data = self.config.get('zone_update_keys', {}).get(zone_name, None)
+        key_data = self._config('zone_update_keys', zone_name)
         if (key_data):
             if (isinstance(key_data, str)):
                 return { 'file': os.path.join(self._directory('update_key'), key_data) }
@@ -307,6 +321,12 @@ class AcmeManager(object):
                 key_data['file'] = os.path.join(self._directory('update_key'), key_data['file'])
                 return key_data
         return None
+
+    def _datetime_from_asn1_generaltime(self, general_time):
+        try:
+            return datetime.datetime.strptime(general_time.decode('ascii'), '%Y%m%d%H%M%SZ')
+        except ValueError:
+            return datetime.datetime.strptime(general_time.decode('ascii'), '%Y%m%d%H%M%S%z')
 
     def _get_challenge(self, authorization_resource, type):
         for challenge in authorization_resource.body.challenges:
@@ -323,7 +343,7 @@ class AcmeManager(object):
 
     def _reload_zone(self, zone_name):
         try:
-            output = subprocess.check_output([self._settings('reload_zone_command'), zone_name], stderr=subprocess.STDOUT)
+            output = subprocess.check_output([self._setting('reload_zone_command'), zone_name], stderr=subprocess.STDOUT)
             self._debug('Reloading zone ', zone_name, '\n')
             time.sleep(2)
         except subprocess.CalledProcessError as error:
@@ -375,7 +395,7 @@ class AcmeManager(object):
         update_commands = '{server}zone {zone}\n{update}\nsend\n'.format(server=server, zone=zone_name, update='\n'.join(updates))
         try:
             self._note('nsupdate:\n', update_commands)
-            output = subprocess.check_output([self._settings('nsupdate_command'), '-v', '-k', zone_key['file']],
+            output = subprocess.check_output([self._setting('nsupdate_command'), '-v', '-k', zone_key['file']],
                                              input=update_commands.encode('ascii'), stderr=subprocess.STDOUT)
             self._debug(operation, ' records for ', zone_name, '\n')
             return True
@@ -463,11 +483,11 @@ class AcmeManager(object):
         self._update_zone(updates, zone_name, zone_key, 'Remove TLSA')
 
     def _reload_service(self, service_name):
-        service_commands = self.config.get('services', {})
-        if (service_name in service_commands):
+        service_command = self._service(service_name)
+        if (service_command):
             self._debug('Reloading service ', service_name, '\n')
             try:
-                output = subprocess.check_output(service_commands[service_name], shell=True, stderr=subprocess.STDOUT)
+                output = subprocess.check_output(service_command, shell=True, stderr=subprocess.STDOUT)
                 if (output):
                     self._warn('Service ', service_name, ' responded to reload with:\n', output, '\n')
             except subprocess.CalledProcessError as error:
@@ -793,7 +813,7 @@ class AcmeManager(object):
             user_agent = '{script}/{version} acme-python/{acme_version}'.format(script=self.script_name, version=self.script_version,
                              acme_version=pkg_resources.get_distribution('acme').version)
             network = client.ClientNetwork(self.client_key, user_agent=user_agent)
-            self.acme_client = client.Client(self._settings('acme_directory_url'), self.client_key, net=network)
+            self.acme_client = client.Client(self._setting('acme_directory_url'), self.client_key, net=network)
         except Exception as error:
             self._error("Can't connect to ACME service.\n", error, '\n')
 
@@ -816,8 +836,8 @@ class AcmeManager(object):
         self._commit_file_transactions([transaction], archive_name=None)
 
     def process_authorizations(self, private_key_names=[]):
-        private_keys = self.config.get('private_keys', {})
-        authorizations = self.config.get('authorizations', {})
+        private_keys = self._config('private_keys')
+        authorizations = self._config('authorizations')
 
         domain_challenges = {}
         for private_key_name in private_keys:
@@ -832,7 +852,7 @@ class AcmeManager(object):
                         if (domain_name not in domain_challenges[zone_name]):
                             domain_challenges[zone_name].append(domain_name)
 
-        if (not self._settings('slave_mode')):
+        if (not self._setting('slave_mode')):
             for zone_name in authorizations:
                 if (zone_name not in domain_challenges):
                     domain_challenges[zone_name] = []
@@ -850,7 +870,7 @@ class AcmeManager(object):
                     self.authorizations[domain_name] = authorization_resource
                     self._debug(domain_name, ' already authorized\n')
                 elif (messages.STATUS_PENDING == authorization_resource.body.status):
-                    if (not self._settings('slave_mode')):
+                    if (not self._setting('slave_mode')):
                         authorization_resources[domain_name] = authorization_resource
                     else:
                         self._debug(domain_name, ' not authorized\n')
@@ -917,8 +937,8 @@ class AcmeManager(object):
                 self._debug('Challenge present for ', domain_name, ' at ', name_server, '\n')
             else:
                 self._note('Challenge missing for ', domain_name, ' at ', name_server, '\n')
-                if (attempt_count < self._settings('max_dns_lookup_attempts')):
-                    heapq.heappush(waiting, DNSTuple(datetime.datetime.now() + datetime.timedelta(seconds=self._settings('dns_lookup_delay')),
+                if (attempt_count < self._setting('max_dns_lookup_attempts')):
+                    heapq.heappush(waiting, DNSTuple(datetime.datetime.now() + datetime.timedelta(seconds=self._setting('dns_lookup_delay')),
                                                      name_server, domain_name, response, attempt_count + 1))
                 else:
                     self._warn('Maximum attempts reached waiting for DNS challenge ', domain_name, ' at ', name_server, '\n')
@@ -948,7 +968,7 @@ class AcmeManager(object):
             if (200 != response.status_code):
                 self._warn(response, ' while waiting for domain challenge\n')
                 heapq.heappush(waiting, AuthorizationTuple(
-                    self.acme_client.retry_after(response, default=self._settings('authorization_delay')),
+                    self.acme_client.retry_after(response, default=self._setting('authorization_delay')),
                     authorization_resource))
                 continue
 
@@ -961,13 +981,13 @@ class AcmeManager(object):
                 self._debug('Invalid authorization: ', self._get_challenge(authorization_resource, challenge_types[domain_name]).error.detail, '\n')
                 failed.append(authorization_resource)
             elif (messages.STATUS_PENDING == authorization_resource.body.status):
-                if (self._settings('max_authorization_attempts') < attempts[authorization_resource]):
+                if (self._setting('max_authorization_attempts') < attempts[authorization_resource]):
                     exhausted.append(authorization_resource)
                     self._note('Giving up\n')
                 else:
                     self._note('Retrying\n')
                     heapq.heappush(waiting, AuthorizationTuple(
-                        self.acme_client.retry_after(response, default=self._settings('authorization_delay')),
+                        self.acme_client.retry_after(response, default=self._setting('authorization_delay')),
                         authorization_resource))
             else:
                 self._error('Unexpected status "', authorization_resource.body.status, '"\n')
@@ -991,8 +1011,8 @@ class AcmeManager(object):
             self._status('Authorization timed out for ', authorization_resource.body.identifier.value, '\n')
 
     def _get_key_options(self, private_key_config):
-        key_size = private_key_config.get('key_size', self._settings('key_size'))
-        key_curve = private_key_config.get('key_curve', self._settings('key_curve'))
+        key_size = private_key_config.get('key_size', self._setting('key_size'))
+        key_curve = private_key_config.get('key_curve', self._setting('key_curve'))
         key_types = private_key_config.get('key_types', self._key_types)
         key_options = {}
         if (key_size and ('rsa' in key_types)):
@@ -1002,7 +1022,7 @@ class AcmeManager(object):
         return key_options
 
     def process_certificates(self, private_key_names=[]):
-        private_keys = self.config.get('private_keys', {})
+        private_keys = self._config('private_keys')
         updated_key_zones = set()
         updated_services = set()
         processed_keys = []
@@ -1018,8 +1038,8 @@ class AcmeManager(object):
                 self._warn('No configured private key types for ', private_key_name, '\n')
                 continue
 
-            hpkp_days = private_keys[private_key_name].get('hpkp_days', self._settings('hpkp_days'))
-            expiration_days = private_keys[private_key_name].get('expiration_days', self._settings('expiration_days'))
+            hpkp_days = private_keys[private_key_name].get('hpkp_days', self._setting('hpkp_days'))
+            expiration_days = private_keys[private_key_name].get('expiration_days', self._setting('expiration_days'))
 
             rolled_private_key = False
             generated_private_key = False
@@ -1037,7 +1057,7 @@ class AcmeManager(object):
 
             rollover = False
             if (self.args.rollover
-                 or (private_keys[private_key_name].get('auto_rollover', self._settings('auto_rollover'))
+                 or (private_keys[private_key_name].get('auto_rollover', self._setting('auto_rollover'))
                      and self._time_to_rollover(oldest_key_timestamp, expiration_days))):
                 if (self.args.force_rollover or self._safe_to_rollover(youngest_key_timestamp, hpkp_days)):
                     rollover = True
@@ -1123,7 +1143,7 @@ class AcmeManager(object):
                                         valid_duration = self._datetime_from_asn1_generaltime(existing_certificate.get_notAfter()) - datetime.datetime.now()
                                         if (valid_duration.days < 0):
                                             self._status('Existing certificate ', certificate_name, ' has expired\n')
-                                        elif (valid_duration.days < self._settings('renewal_days')):
+                                        elif (valid_duration.days < self._setting('renewal_days')):
                                             self._status('Existing certificate ', certificate_name, ' will expire in ',
                                                          (str(valid_duration.days) + ' days') if (valid_duration.days) else 'less than a day',
                                                          '\n')
@@ -1178,14 +1198,14 @@ class AcmeManager(object):
                     transactions.append(self.save_private_key(private_key_name + '_backup', key_type,
                                                               backup_keys[key_type].key, timestamp=backup_keys[key_type].timestamp))
 
-            hpkp_days = private_keys[private_key_name].get('hpkp_days', self._settings('hpkp_days'))
+            hpkp_days = private_keys[private_key_name].get('hpkp_days', self._setting('hpkp_days'))
             if ((0 < hpkp_days) and (self._directory('hpkp'))
                     and (private_key_data.generated_key or private_key_data.changed_key or generated_backup_key or not self.hpkp_headers_present(private_key_name))):
                 keys = ([private_key_data.keys[key_type].key for key_type in private_key_data.key_options if private_key_data.keys[key_type].key]
                         + [private_key_data.backup_keys[key_type].key for key_type in private_key_data.key_options if private_key_data.backup_keys[key_type].key])
                 if (1 < len(keys)):
                     transactions += self.save_hpkp_headers(private_key_name, keys, hpkp_days,
-                                                           private_keys[private_key_name].get('pin_subdomains', self._settings('pin_subdomains')))
+                                                           private_keys[private_key_name].get('pin_subdomains', self._setting('pin_subdomains')))
 
             processed_params = set()
             for certificate_data in private_key_data.issued_certificates:
@@ -1196,13 +1216,13 @@ class AcmeManager(object):
                     generated_params = False
                     dhparam_pem, ecparam_pem = self.load_params(certificate_name) if (not private_key_data.rolled_key) else (None, None)
                     if (not dhparam_pem):
-                        dhparam_size = certificate_data.config.get('dhparam_size', self._settings('dhparam_size'))
+                        dhparam_size = certificate_data.config.get('dhparam_size', self._setting('dhparam_size'))
                         if (dhparam_size):
                             self._status('Generating Diffie-Hellman parameters for ', certificate_name, '\n')
                             dhparam_pem = self.generate_dhparam(dhparam_size)
                             generated_params = True
                     if (not ecparam_pem):
-                        ecparam_curve = certificate_data.config.get('ecparam_curve', self._settings('ecparam_curve'))
+                        ecparam_curve = certificate_data.config.get('ecparam_curve', self._setting('ecparam_curve'))
                         if (ecparam_curve):
                             self._status('Generating elliptical curve parameters for ', certificate_name, '\n')
                             ecparam_pem = self.generate_ecparam(ecparam_curve)
@@ -1232,7 +1252,7 @@ class AcmeManager(object):
                     certificate_name = certificate_data.certificate_name
                     self._status('Certificate ', certificate_name, ' (', certificate_data.key_type, ') installed\n')
                     updated_services.update(certificate_data.config.get('services', []))
-                    if (not self._settings('slave_mode')):
+                    if (not self._setting('slave_mode')):
                         for zone_name in certificate_data.config['alt_names']:
                             if (not self._zone_key(zone_name)):
                                 updated_key_zones.add(zone_name)
@@ -1245,7 +1265,7 @@ class AcmeManager(object):
             self._reload_service(service_name)
 
     def revoke_certificates(self, private_key_names):
-        private_keys = self.config.get('private_keys', {})
+        private_keys = self._config('private_keys')
         updated_key_zones = set()
         updated_tlsa_zones = collections.OrderedDict()
 
@@ -1282,7 +1302,7 @@ class AcmeManager(object):
                     self.archive_chain(certificate_name, key_type, archive_name=private_key_name, archive_date=archive_date)
                     self.archive_private_key(certificate_name + '_full', key_type, archive_name=private_key_name, archive_date=archive_date)
 
-                    if (not self._settings('slave_mode')):
+                    if (not self._setting('slave_mode')):
                         for zone_name in key_certificates[certificate_name]['alt_names']:
                             if (not self._zone_key(zone_name)):
                                 updated_key_zones.add(zone_name)
@@ -1312,7 +1332,7 @@ class AcmeManager(object):
             self._remove_tlsa_records(zone_name, self._zone_key(zone_name), updated_tlsa_zones[zone_name])
 
     def update_tlsa_records(self, private_key_names):
-        private_keys = self.config.get('private_keys', {})
+        private_keys = self._config('private_keys')
         tlsa_zones = collections.OrderedDict()
 
         root_certificates = []

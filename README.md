@@ -869,7 +869,7 @@ Example:
 Each certificate and key file will have a suffix, just before the file extension,
 indicating the type of key the file is for.
 
-The default suffix used for each key type can be overridden in the 'key_type_suffix' section.
+The default suffix used for each key type can be overridden in the 'key_type_suffixes' section.
 If you are only using a single key type, or want to omit the suffix from one key type,
 set it to an empty string.
 Note that if using multiple key types the suffix must be unique or files will be overridden.
@@ -878,7 +878,7 @@ Example:
 
     {
         ...
-        "key_type_suffix": {
+        "key_type_suffixes": {
             "rsa": ".rsa",
             "ecdsa": ".ecdsa"
         },
