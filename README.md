@@ -70,6 +70,13 @@ or to a remote DNS server via RFC 2136 dynamic DNS updates using nsupdate.
 The choice between local and remote DNS updates can be made on a zone by zone basis.
 
 
+### Configurable Output File Names
+
+Server administrators often develop their own file naming conventions or need to match naming conventions of other tools.
+The names and output directories of all certificate, key, and related files are fully configurable.
+The defaults are intended for standard Debian installations.
+
+
 ## Installation
 
 Requires Python 3.4+ and the acme and py3dns packages.
@@ -461,9 +468,15 @@ All of these need only be present when the desired value is different from the d
 The default value is '/var/run'.
 * 'resource' specifies the directory to store the client key and registration files for the ACME account.
 The default value is '/var/local/acmebot'.
-* 'private_key' specifies the directory to store private key and backup private key files.
+* 'private_key' specifies the directory to store primary private key files.
+The default value is '/etc/ssl/private'.
+* 'backup_key' specifies the directory to store backup private key files.
+The default value is '/etc/ssl/private'.
+* 'full_key' specifies the directory to store primary private key files that include the certificate chain.
 The default value is '/etc/ssl/private'.
 * 'certificate' specifies the directory to store certificate files.
+The default value is '/etc/ssl/certs'.
+* 'full_certificate' specifies the directory to store full chain certificate files that include the root certificate.
 The default value is '/etc/ssl/certs'.
 * 'chain' specifies the directory to store certificate intermediate chain files.
 The default value is '/etc/ssl/certs'.
@@ -489,7 +502,10 @@ Example:
             "pid": "/var/run",
             "resource": "/var/local/acmebot",
             "private_key": "/etc/ssl/private",
+            "backup_key": "/etc/ssl/private",
+            "full_key": "/etc/ssl/private",
             "certificate": "/etc/ssl/certs",
+            "full_certificate": "/etc/ssl/certs",
             "chain": "/etc/ssl/certs",
             "param": "/etc/ssl/private",
             "challenge": "/etc/ssl/challenges",
@@ -881,6 +897,58 @@ Example:
         "key_type_suffixes": {
             "rsa": ".rsa",
             "ecdsa": ".ecdsa"
+        },
+        ...
+    }
+
+
+### File Name Patterns
+
+All output file names can be overridden using standard Python format strings.
+
+* 'private_key' specifies the name of primary private key files.
+* 'backup_key' speficies the name of backup private key files.
+* 'full_key' speficies the name of primary private key files that include the certificate chain.
+* 'certificate' specifies the name of certificate files.
+* 'full_certificate' specifies the name of certificate files that include the root certificate.
+* 'chain' specifies the name of intemediate certificate files.
+* 'param' specifies the name of Diffie-Hellman parameter files.
+* 'challenge' specifies the name of ACME challenge files used for local DNS updates.
+* 'hpkp' specifies the name of HPKP header files.
+
+Example:
+
+    {   ...
+        "file_names": {
+            "private_key": "{name}{suffix}.key",
+            "backup_key": "{name}_backup{suffix}.key",
+            "full_key": "{name}_full{suffix}.key",
+            "certificate": "{name}{suffix}.pem",
+            "full_certificate": "{name}+root{suffix}.pem",
+            "chain": "{name}_chain{suffix}.pem",
+            "param": "{name}_param.pem",
+            "challenge": "{name}",
+            "hpkp": "{name}.{server}"
+        },
+        ...
+    }
+
+
+### HPKP Headers
+
+This section defines the set of HPKP header files that will be generated and their contents.
+Header files for additional servers can be added at will,
+one file will be generated for each server.
+Using standard Python format strings, the '{header}' field will be replaced with the HPKP header.
+The default servers can be omitted by setting the header to 'null'.
+
+Example:
+
+    {
+        ...
+        "hpkp_headers": {
+            "apache": "Header always set Public-Key-Pins \"{header}\"\n",
+            "nginx": "add_header Public-Key-Pins \"{header}\";\n"
         },
         ...
     }

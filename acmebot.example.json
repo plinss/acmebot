@@ -27,7 +27,10 @@
         "pid": "/var/run",
         "resource": "/var/local/acmebot",
         "private_key": "/etc/ssl/private",
+        "backup_key": "/etc/ssl/private",
+        "full_key": "/etc/ssl/private",
         "certificate": "/etc/ssl/certs",
+        "full_certificate": "/etc/ssl/certs",
         "chain": "/etc/ssl/certs",
         "param": "/etc/ssl/private",
         "challenge": "/etc/ssl/challenges",
@@ -35,9 +38,24 @@
         "update_key": "/etc/ssl/update_keys",
         "archive": "/etc/ssl/archive"
     },
-    "key_type_suffix": {
+    "key_type_suffixes": {
         "rsa": ".rsa",
         "ecdsa": ".ecdsa"
+    },
+    "file_names": {
+        "private_key": "{name}{suffix}.key",
+        "backup_key": "{name}_backup{suffix}.key",
+        "full_key": "{name}_full{suffix}.key",
+        "certificate": "{name}{suffix}.pem",
+        "full_certificate": "{name}+root{suffix}.pem",
+        "chain": "{name}_chain{suffix}.pem",
+        "param": "{name}_param.pem",
+        "challenge": "{name}",
+        "hpkp": "{name}.{server}"
+    }
+    "hpkp_headers": {
+        "apache": "Header always set Public-Key-Pins \"{header}\"\n",
+        "nginx": "add_header Public-Key-Pins \"{header}\";\n"
     },
     "services": {
         "apache": "systemctl reload apache2",
