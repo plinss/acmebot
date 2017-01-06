@@ -326,7 +326,7 @@ For Nginx the /etc/nginx/snippets/ssl/example.com file would contain:
     ssl_certificate         /etc/ssl/certs/example.com.ecdsa.pem;   # requires nginx 1.11.0+ to use multiple certificates
     ssl_certificate_key     /etc/ssl/private/example.com.ecdsa.key;
     ssl_trusted_certificate /etc/ssl/certs/example.com+root.rsa.pem;
-    ssl_dhparam             /etc/ssl/certs/example.com_param.pem;
+    ssl_dhparam             /etc/ssl/private/example.com_param.pem;
     ssl_ecdh_curve secp384r1;
     add_header Strict-Transport-Security "max-age=31536000";
     include /etc/ssl/hpkp/example.com.nginx;
