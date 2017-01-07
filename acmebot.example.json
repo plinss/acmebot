@@ -52,7 +52,7 @@
         "param": "{name}_param.pem",
         "challenge": "{name}",
         "hpkp": "{name}.{server}"
-    }
+    },
     "hpkp_headers": {
         "apache": "Header always set Public-Key-Pins \"{header}\"\n",
         "nginx": "add_header Public-Key-Pins \"{header}\";\n"

@@ -49,9 +49,10 @@ class AcmeError(Exception):
     pass
 
 class FileTransaction(object):
-    __slots__ = ['file', 'temp_file_path', 'file_path', 'chmod', 'timestamp']
+    __slots__ = ['file', 'temp_file_path', 'file_type', 'file_path', 'chmod', 'timestamp']
 
-    def __init__(self, file_path, chmod=None, timestamp=None):
+    def __init__(self, file_type, file_path, chmod=None, timestamp=None):
+        self.file_type = file_type
         self.file_path = file_path
         self.chmod = chmod
         self.timestamp = timestamp
@@ -200,7 +201,7 @@ class AcmeManager(object):
         }
 
         self.resource_dir = os.path.join(script_dir, self._directory('resource'))
-        os.makedirs(self.resource_dir, exist_ok = True)
+        self._makedir(self.resource_dir, 0o600)
 
     def _load_config(self, file_path, search_paths=[]):
         search_paths = [''] if (os.path.isabs(file_path)) else search_paths
@@ -241,20 +242,38 @@ class AcmeManager(object):
         sys.stderr.write(message)
         raise AcmeError(message)
 
+    def _makedir(self, dir_path, chmod=None):
+        if (not os.path.isdir(dir_path)):
+            try:
+                os.makedirs(dir_path)
+                if (chmod):
+                    if (chmod & 0o700):
+                        chmod |= 0o100
+                    if (chmod & 0o070):
+                        chmod |= 0o010
+                    if (chmod & 0o007):
+                        chmod |= 0o001
+                    try:
+                        os.chmod(dir_path, chmod)
+                    except PermissionError as error:
+                        self._warn('Unable to set directory mode for ', dir_path, '\n', error, '\n')
+            except Exception as error:
+                self._warn('Unable to create directory ', dir_path, '\n', error, '\n')
+
     def _open_file(self, file_path, mode='r', chmod=0o777):
         def opener(file_path, flags):
             return os.open(file_path, flags, mode=chmod)
         if (('w' in mode) and isinstance(file_path, str)):
-            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+            self._makedir(os.path.dirname(file_path), chmod)
         return open(file_path, mode, opener=opener)
 
-    def _archive_file(self, file_path, archive_name='', archive_date=datetime.datetime.now()):
+    def _archive_file(self, file_type, file_path, archive_name='', archive_date=datetime.datetime.now()):
         if (os.path.isfile(file_path) and (not os.path.islink(file_path)) and (archive_name is not None)):
             archive_file_path = os.path.join(self._directory('archive'),
                                              archive_name,
                                              archive_date.strftime('%Y_%m_%d_%H%M%S') if (archive_date) else '',
-                                             os.path.basename(file_path))
-            os.makedirs(os.path.dirname(archive_file_path), exist_ok=True)
+                                             file_type + '.' + os.path.basename(file_path))
+            self._makedir(os.path.dirname(archive_file_path), 0o640)
             os.rename(file_path, archive_file_path)
             self._note('Archived ', file_path, ' as ', archive_file_path, '\n')
             return (file_path, archive_file_path)
@@ -272,33 +291,45 @@ class AcmeManager(object):
         except:
             return -1
 
-    def _rename_file(self, old_file_path, new_file_path, chmod=None, timestamp=None, archive_name=''):
+    def _rename_file(self, old_file_path, new_file_path, chmod=None, timestamp=None):
         old_file_path = old_file_path.replace('*', '_')
         new_file_path = new_file_path.replace('*', '_')
         if (os.path.isfile(old_file_path)):
-            self._archive_file(new_file_path, archive_name=archive_name)
-            os.makedirs(os.path.dirname(new_file_path), exist_ok=True)
+            self._makedir(os.path.dirname(new_file_path), chmod)
             os.rename(old_file_path, new_file_path)
             if (chmod):
-                os.chmod(new_file_path, chmod)
+                try:
+                    os.chmod(new_file_path, chmod)
+                except PermissionError as error:
+                    self._warn('Unable to set file mode for ', new_file_path, '\n', error, '\n')
             if (timestamp):
-                os.utime(new_file_path, (timestamp, timestamp))
+                try:
+                    os.utime(new_file_path, (timestamp, timestamp))
+                except PermissionError as error:
+                    self._warn('Unable to set file time for ', new_file_path, '\n', error, '\n')
             try:
                 os.chown(new_file_path, self._get_user_id(self._setting('file_user')), self._get_group_id(self._setting('file_group')))
             except PermissionError as error:
                 self._warn('Unable to set file ownership for ', new_file_path, '\n', error, '\n')
+            return new_file_path
+        return None
 
     def _commit_file_transactions(self, file_transactions, archive_name=''):
         archived_files = []
+        committed_files = []
         try:
             if (archive_name is not None):
                 archive_date = datetime.datetime.now()
                 for file_transaction in file_transactions:
-                    archived_files.append(self._archive_file(file_transaction.file_path, archive_name=archive_name, archive_date=archive_date))
+                    archived_files.append(self._archive_file(file_transaction.file_type, file_transaction.file_path,
+                                                             archive_name=archive_name, archive_date=archive_date))
             for file_transaction in file_transactions:
-                self._rename_file(file_transaction.temp_file_path, file_transaction.file_path,
-                                  chmod=file_transaction.chmod, timestamp=file_transaction.timestamp, archive_name=None)
+                committed_files.append(self._rename_file(file_transaction.temp_file_path, file_transaction.file_path,
+                                                         chmod=file_transaction.chmod, timestamp=file_transaction.timestamp))
         except Exception as error:  # restore any archived files
+            for committed_file_path in committed_files:
+                if (committed_file_path):
+                    os.remove(committed_file_path)
             for original_file_path, archived_file_path in archived_files:
                 if (original_file_path):
                     os.rename(archived_file_path, original_file_path)
@@ -544,15 +575,16 @@ class AcmeManager(object):
         self._warn('Unknown key type ', key_type, '\n')
         return None
 
-    def load_private_key(self, file_path):
+    def load_private_key(self, file_type, file_name, key_type):
         try:
-            with open(file_path, 'r') as private_key_file:
-                return KeyData(OpenSSL.crypto.load_privatekey(OpenSSL.crypto.FILETYPE_PEM, private_key_file.read().encode('ascii')), os.stat(file_path).st_mtime)
+            key_file_path = self._file_path(file_type, file_name, key_type)
+            with open(key_file_path, 'r') as private_key_file:
+                return KeyData(OpenSSL.crypto.load_privatekey(OpenSSL.crypto.FILETYPE_PEM, private_key_file.read().encode('ascii')), os.stat(key_file_path).st_mtime)
         except:
             return KeyData(None, None)
 
-    def save_private_key(self, file_path, private_key, timestamp=None, certificate=None, chain=[], dhparam_pem=None, ecparam_pem=None):
-        with FileTransaction(file_path, 0o640, timestamp) as transaction:
+    def save_private_key(self, file_type, file_name, key_type, private_key, timestamp=None, certificate=None, chain=[], dhparam_pem=None, ecparam_pem=None):
+        with FileTransaction(file_type, self._file_path(file_type, file_name, key_type), 0o640, timestamp) as transaction:
             if (private_key):
                 transaction.write(OpenSSL.crypto.dump_privatekey(OpenSSL.crypto.FILETYPE_PEM, private_key).decode('ascii'))
                 if (certificate):
@@ -560,8 +592,8 @@ class AcmeManager(object):
                     self._save_certificate(transaction, certificate, chain=chain, dhparam_pem=dhparam_pem, ecparam_pem=ecparam_pem)
         return transaction
 
-    def archive_private_key(self, file_path, archive_name='', archive_date=None):
-        self._archive_file(file_path, archive_name=archive_name, archive_date=archive_date)
+    def archive_private_key(self, file_type, file_name, key_type, archive_name='', archive_date=None):
+        self._archive_file(file_type, self._file_path(file_type, file_name, key_type), archive_name=archive_name, archive_date=archive_date)
 
     def _time_to_rollover(self, backup_key_timestamp, expiration_days):
         if (backup_key_timestamp and expiration_days):
@@ -612,7 +644,7 @@ class AcmeManager(object):
         transactions = []
         for server, header_format in hpkp_headers.items():
             if (header_format):
-                with FileTransaction(self._file_path('hpkp', file_name, server=server), 0o644) as transaction:
+                with FileTransaction('hpkp', self._file_path('hpkp', file_name, server=server), 0o644) as transaction:
                     transaction.write(header_format.format(header=header))
                     transactions.append(transaction)
         return transactions
@@ -620,7 +652,7 @@ class AcmeManager(object):
     def archive_hpkp_headers(self, file_name, archive_name='', archive_date=None):
         hpkp_headers = self._config('hpkp_headers')
         for server in hpkp_headers:
-            self._archive_file(self._file_path('hpkp', file_name, server=server), archive_name=archive_name, archive_date=archive_date)
+            self._archive_file('hpkp', self._file_path('hpkp', file_name, server=server), archive_name=archive_name, archive_date=archive_date)
 
     def get_alt_names(self, certificate):
         for index in range(certificate.get_extension_count()):
@@ -635,9 +667,9 @@ class AcmeManager(object):
     def _certificate_digest(self, certificate, digest='sha256'):
         return certificate.wrapped.digest(digest).decode('ascii').replace(':','').lower()
 
-    def load_certificate(self, file_path):
+    def load_certificate(self, file_type, file_name, key_type):
         try:
-            with open(file_path, 'r') as certificate_file:
+            with open(self._file_path(file_type, file_name, key_type), 'r') as certificate_file:
                 return jose.ComparableX509(OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, certificate_file.read().encode('ascii')))
         except:
             return None
@@ -645,16 +677,16 @@ class AcmeManager(object):
     def load_root_certificates(self):
         root_certificates = collections.OrderedDict()
         for key_type in self._key_types:
-            root_certificates[key_type] = self.load_certificate(self._file_path('certificate', os.path.join(os.path.dirname(self.config_file_path), 'root_cert'), key_type))
+            root_certificates[key_type] = self.load_certificate('certificate', os.path.join(os.path.dirname(self.config_file_path), 'root_cert'), key_type)
         return root_certificates
 
-    def save_certificate(self, file_path, certificate, chain=[], root_certificate=None, dhparam_pem=None, ecparam_pem=None):
-        with FileTransaction(file_path, 0o644) as transaction:
+    def save_certificate(self, file_type, file_name, key_type, certificate, chain=[], root_certificate=None, dhparam_pem=None, ecparam_pem=None):
+        with FileTransaction(file_type, self._file_path(file_type, file_name, key_type), 0o644) as transaction:
             self._save_certificate(transaction.file, certificate, chain=chain, root_certificate=root_certificate, dhparam_pem=dhparam_pem, ecparam_pem=ecparam_pem)
         return transaction
 
-    def archive_certificate(self, file_path, archive_name='', archive_date=None):
-        self._archive_file(file_path, archive_name=archive_name, archive_date=archive_date)
+    def archive_certificate(self, file_type, file_name, key_type, archive_name='', archive_date=None):
+        self._archive_file(file_type, self._file_path(file_type, file_name, key_type), archive_name=archive_name, archive_date=archive_date)
 
     def _save_certificate(self, certificate_file, certificate, chain=None, root_certificate=None, dhparam_pem=None, ecparam_pem=None):
         certificate_pem = OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_PEM, certificate.wrapped).decode('ascii')
@@ -691,13 +723,13 @@ class AcmeManager(object):
             pass
         return chain
 
-    def save_chain(self, file_path, chain):
-        with FileTransaction(file_path, 0o644) as transaction:
+    def save_chain(self, file_name, key_type, chain):
+        with FileTransaction('chain', self._file_path('chain', file_name, key_type), 0o644) as transaction:
             self._save_chain(transaction.file, chain)
         return transaction
 
-    def archive_chain(self, file_path, archive_name='', archive_date=None):
-        self._archive_file(file_path, archive_name=archive_name, archive_date=archive_date)
+    def archive_chain(self, file_name, key_type, archive_name='', archive_date=None):
+        self._archive_file('chain', self._file_path('chain', file_name, key_type), archive_name=archive_name, archive_date=archive_date)
 
     def _save_chain(self, chain_file, chain, lead_in=''):
         for chain_certificate in chain:
@@ -744,16 +776,16 @@ class AcmeManager(object):
             pass
         return (None, None)
 
-    def save_params(self, file_path, dhparam_pem, ecparam_pem):
-        with FileTransaction(file_path, 0o640) as transaction:
+    def save_params(self, file_name, dhparam_pem, ecparam_pem):
+        with FileTransaction('param', self._file_path('param', file_name), 0o640) as transaction:
             if (dhparam_pem and ecparam_pem):
                 transaction.write(dhparam_pem + '\n' + ecparam_pem)
             else:
                 transaction.write(dhparam_pem or ecparam_pem)
         return transaction
 
-    def archive_params(self, file_path, archive_name='', archive_date=None):
-        self._archive_file(file_path, archive_name=archive_name, archive_date=archive_date)
+    def archive_params(self, file_name, archive_name='', archive_date=None):
+        self._archive_file('param', self._file_path('param', file_name), archive_name=archive_name, archive_date=archive_date)
 
     def generate_csr(self, private_key, common_name, alt_names=[], must_staple=False):
         req = OpenSSL.crypto.X509Req()
@@ -846,7 +878,7 @@ class AcmeManager(object):
             self._note('Auto-accepting TOS: ', self.registration.terms_of_service, '\n')
             self.acme_client.agree_to_tos(self.registration)
             self.registration = self.acme_client.query_registration(self.registration)   # get agreement info
-        with FileTransaction(registration_path, 0o600) as transaction:
+        with FileTransaction('registration', registration_path, 0o600) as transaction:
             transaction.write(self.registration.json_dumps())
             self._note('Saved registration ', registration_path, '\n')
         self._commit_file_transactions([transaction], archive_name=None)
@@ -1065,7 +1097,7 @@ class AcmeManager(object):
             youngest_key_timestamp = sys.maxsize
             oldest_key_timestamp = 0
             for key_type in key_options:
-                backup_key_data = self.load_private_key(self._file_path('backup_key', private_key_name, key_type))
+                backup_key_data = self.load_private_key('backup_key', private_key_name, key_type)
                 if (backup_key_data.timestamp):
                     youngest_key_timestamp = min(youngest_key_timestamp, backup_key_data.timestamp)
                     oldest_key_timestamp = max(oldest_key_timestamp, backup_key_data.timestamp)
@@ -1084,7 +1116,7 @@ class AcmeManager(object):
             if (rollover):
                 keys = {key_type: KeyData(None, None) for key_type in key_options}
             else:
-                keys = {key_type: self.load_private_key(self._file_path('private_key', private_key_name, key_type)) for key_type in key_options}
+                keys = {key_type: self.load_private_key('private_key', private_key_name, key_type) for key_type in key_options}
 
             for key_type in key_options:
                 if (backup_keys[key_type].key and not keys[key_type].key):
@@ -1135,7 +1167,7 @@ class AcmeManager(object):
                         continue
 
                     if ((not rolled_private_key) and (not self.args.renew)):
-                        existing_certificate = self.load_certificate(self._file_path('certificate', certificate_name, key_type))
+                        existing_certificate = self.load_certificate('certificate', certificate_name, key_type)
                         if (existing_certificate):
                             certificate_common_name = existing_certificate.get_subject().commonName
                             if (common_name != certificate_common_name):
@@ -1206,10 +1238,10 @@ class AcmeManager(object):
 
             for key_type in private_key_data.key_options:
                 if (private_key_data.generated_key or private_key_data.rolled_key):
-                    transactions.append(self.save_private_key(self._file_path('private_key', private_key_name, key_type),
+                    transactions.append(self.save_private_key('private_key', private_key_name, key_type,
                                                               private_key_data.keys[key_type].key, timestamp=private_key_data.keys[key_type].timestamp))
                 if (generated_backup_key):
-                    transactions.append(self.save_private_key(self._file_path('backup_key', private_key_name, key_type),
+                    transactions.append(self.save_private_key('backup_key', private_key_name, key_type,
                                                               backup_keys[key_type].key, timestamp=backup_keys[key_type].timestamp))
 
             hpkp_days = private_keys[private_key_name].get('hpkp_days', self._setting('hpkp_days'))
@@ -1243,19 +1275,19 @@ class AcmeManager(object):
                             generated_params = True
 
                     if ((dhparam_pem or ecparam_pem) and self._directory('param') and (generated_params or not self.params_present(certificate_name))):
-                        transactions.append(self.save_params(self._file_path('param', certificate_name), dhparam_pem, ecparam_pem))
+                        transactions.append(self.save_params(certificate_name, dhparam_pem, ecparam_pem))
 
                 key_type = certificate_data.key_type
-                transactions.append(self.save_certificate(self._file_path('certificate', certificate_name, key_type), certificate_data.certificate,
+                transactions.append(self.save_certificate('certificate', certificate_name, key_type, certificate_data.certificate,
                                                           chain=certificate_data.chain,
                                                           dhparam_pem=dhparam_pem, ecparam_pem=ecparam_pem))
                 if (root_certificates[key_type]):
-                    transactions.append(self.save_certificate(self._file_path('full_certificate', certificate_name, key_type), certificate_data.certificate,
+                    transactions.append(self.save_certificate('full_certificate', certificate_name, key_type, certificate_data.certificate,
                                                               chain=certificate_data.chain, root_certificate=root_certificates[key_type],
                                                               dhparam_pem=dhparam_pem, ecparam_pem=ecparam_pem))
                 if (certificate_data.chain and self._directory('chain')):
-                    transactions.append(self.save_chain(self._file_path('chain', certificate_name, key_type), certificate_data.chain))
-                transactions.append(self.save_private_key(self._file_path('full_key', certificate_name, key_type), private_key_data.keys[key_type].key,
+                    transactions.append(self.save_chain(certificate_name, key_type, certificate_data.chain))
+                transactions.append(self.save_private_key('full_key', certificate_name, key_type, private_key_data.keys[key_type].key,
                                                           certificate=certificate_data.certificate, chain=certificate_data.chain,
                                                           dhparam_pem=dhparam_pem, ecparam_pem=ecparam_pem))
 
@@ -1297,7 +1329,7 @@ class AcmeManager(object):
                 for certificate_name in key_certificates:
                     certificate_key_types = key_certificates[certificate_name].get('key_types', key_options.keys())
                     for key_type in certificate_key_types:
-                        certificate = self.load_certificate(self._file_path('certificate', certificate_name, key_type))
+                        certificate = self.load_certificate('certificate', certificate_name, key_type)
                         if (certificate):
                             certificate_count += 1
                             try:
@@ -1312,11 +1344,11 @@ class AcmeManager(object):
                 archive_date = datetime.datetime.now()
                 processed_tlsa = set()
                 for certificate_name, key_type in revoked_certificates:
-                    self.archive_certificate(self._file_path('certificate', certificate_name, key_type), archive_name=private_key_name, archive_date=archive_date)
-                    self.archive_certificate(self._file_path('full_certificate', certificate_name, key_type), archive_name=private_key_name, archive_date=archive_date)
-                    self.archive_chain(self._file_path('chain', certificate_name, key_type), archive_name=private_key_name, archive_date=archive_date)
-                    self.archive_private_key(self._file_path('full_key', certificate_name, key_type), archive_name=private_key_name, archive_date=archive_date)
-                    self.archive_params(self._file_path('param', certificate_name), archive_name=private_key_name, archive_date=archive_date)
+                    self.archive_certificate('certificate', certificate_name, key_type, archive_name=private_key_name, archive_date=archive_date)
+                    self.archive_certificate('full_certificate', certificate_name, key_type, archive_name=private_key_name, archive_date=archive_date)
+                    self.archive_chain(certificate_name, key_type, archive_name=private_key_name, archive_date=archive_date)
+                    self.archive_private_key('full_key', certificate_name, key_type, archive_name=private_key_name, archive_date=archive_date)
+                    self.archive_params(certificate_name, archive_name=private_key_name, archive_date=archive_date)
 
                     if (not self._setting('slave_mode')):
                         for zone_name in key_certificates[certificate_name]['alt_names']:
@@ -1336,7 +1368,7 @@ class AcmeManager(object):
 
                 if (len(revoked_certificates) == certificate_count):
                     for key_type in key_options:
-                        self.archive_private_key(self._file_path('private_key', private_key_name, key_type), archive_name=private_key_name, archive_date=archive_date)
+                        self.archive_private_key('private_key', private_key_name, key_type, archive_name=private_key_name, archive_date=archive_date)
                         self.archive_hpkp_headers(private_key_name, archive_name=private_key_name, archive_date=archive_date)
             else:
                 self._warn(private_key_name, ' is not a configured private key\n')
@@ -1363,8 +1395,8 @@ class AcmeManager(object):
 
             keys = []
             for key_type in key_options:
-                keys.append((key_type, self.load_private_key(self._file_path('private_key', private_key_name, key_type)).key))
-                keys.append((key_type, self.load_private_key(self._file_path('backup_key', private_key_name, key_type)).key))
+                keys.append((key_type, self.load_private_key('private_key', private_key_name, key_type).key))
+                keys.append((key_type, self.load_private_key('backup_key', private_key_name, key_type).key))
 
             key_certificates = private_keys[private_key_name].get('certificates', {})
             for certificate_name in key_certificates:
@@ -1374,7 +1406,7 @@ class AcmeManager(object):
                     chain = []
                     certificate_key_types = key_certificates[certificate_name].get('key_types', key_options.keys())
                     for key_type in certificate_key_types:
-                        certificates.append(self.load_certificate(self._file_path('certificate', certificate_name, key_type)))
+                        certificates.append(self.load_certificate('certificate', certificate_name, key_type))
                         chain += self.load_chain(certificate_name, key_type)
 
                     for zone_name in tlsa_records:
