@@ -162,7 +162,7 @@ class AcmeManager(object):
                 'certificate': '/etc/ssl/certs',
                 'full_certificate': '/etc/ssl/certs',
                 'chain': '/etc/ssl/certs',
-                'param': '/etc/ssl/private',
+                'param': '/etc/ssl/params',
                 'challenge': '/etc/ssl/challenges',
                 'hpkp': '/etc/ssl/hpkp',
                 'update_key': '/etc/ssl/update_keys',

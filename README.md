@@ -267,7 +267,7 @@ This file is useful for configuring OSCP stapling on Nginx servers.
 ### Diffie-Hellman Parameter File
 
 If custom Diffie-Hellman parameters or a custom elliptical curve are configured,
-a file will be created in /etc/ssl/private, named &lt;filename&gt;_param.pem,
+a file will be created in /etc/ssl/params, named &lt;filename&gt;_param.pem,
 containing the Diffie-Hellman parameters and elliptical curve paramaters.
 
 This file will not be created if the 'param' directory is set to 'null'.
@@ -326,7 +326,7 @@ For Nginx the /etc/nginx/snippets/ssl/example.com file would contain:
     ssl_certificate         /etc/ssl/certs/example.com.ecdsa.pem;   # requires nginx 1.11.0+ to use multiple certificates
     ssl_certificate_key     /etc/ssl/private/example.com.ecdsa.key;
     ssl_trusted_certificate /etc/ssl/certs/example.com+root.rsa.pem;
-    ssl_dhparam             /etc/ssl/private/example.com_param.pem;
+    ssl_dhparam             /etc/ssl/params/example.com_param.pem;
     ssl_ecdh_curve secp384r1;
     add_header Strict-Transport-Security "max-age=31536000";
     include /etc/ssl/hpkp/example.com.nginx;
@@ -482,7 +482,7 @@ The default value is '/etc/ssl/certs'.
 The default value is '/etc/ssl/certs'.
 Chain files may be omitted by setting this to 'null'.
 * 'param' specifies the directory to store Diffie-Hellman parameter files.
-The default value is '/etc/ssl/private'.
+The default value is '/etc/ssl/params'.
 Paramater files may be omitted by setting this to 'null'.
 * 'challenge' specifies the directory to store ACME dns-01 challenge files.
 The default value is '/etc/ssl/challenge'.
@@ -507,7 +507,7 @@ Example:
             "certificate": "/etc/ssl/certs",
             "full_certificate": "/etc/ssl/certs",
             "chain": "/etc/ssl/certs",
-            "param": "/etc/ssl/private",
+            "param": "/etc/ssl/params",
             "challenge": "/etc/ssl/challenges",
             "hpkp": "/etc/ssl/hpkp",
             "update_key": "/etc/ssl/update_keys",
