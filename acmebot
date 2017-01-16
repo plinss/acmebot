@@ -142,6 +142,7 @@ class AcmeManager(object):
                 'file_group': 'ssl-cert',
                 'hpkp_days': 30,
                 'pin_subdomains': True,
+                'hpkp_report_uri': None,
                 'renewal_days': 30,
                 'expiration_days': 730,
                 'auto_rollover': False,
@@ -638,11 +639,12 @@ class AcmeManager(object):
                 return False
         return True
 
-    def save_hpkp_headers(self, file_name, private_keys, hpkp_days, pin_subdomains):
-        pins = '; '.join([('pin-sha256=\\"' + base64.b64encode(self._public_key_digest(private_key)).decode('ascii') + '\\"') for private_key in private_keys])
+    def save_hpkp_headers(self, file_name, private_keys, hpkp_days, pin_subdomains, report_uri):
+        pins = '; '.join([r'pin-sha256=\"{digest}\"'.format(digest=base64.b64encode(self._public_key_digest(private_key)).decode('ascii')) for private_key in private_keys])
         duration = str(hpkp_days * 86400)
         sub_domains = ' includeSubdomains;' if (pin_subdomains) else ''
-        header = '{pins}; max-age={duration};{sub_domains}'.format(pins=pins, duration=duration, sub_domains=sub_domains)
+        report = r' report-uri=\"{report_uri}\";'.format(report_uri=report_uri) if (report_uri) else ''
+        header = '{pins}; max-age={duration};{sub_domains}{report}'.format(pins=pins, duration=duration, sub_domains=sub_domains, report=report)
 
         hpkp_headers = self._config('hpkp_headers')
         transactions = []
@@ -822,7 +824,7 @@ class AcmeManager(object):
                 if ('certificates' not in private_keys[certificate_name]):
                     private_keys[certificate_name]['certificates'] = collections.OrderedDict()
                 if (certificate_name not in private_keys[certificate_name]['certificates']):
-                    for config_key in ('key_types', 'key_size', 'key_curve', 'expiration_days', 'auto_rollover', 'hpkp_days', 'pin_subdomains'):
+                    for config_key in ('key_types', 'key_size', 'key_curve', 'expiration_days', 'auto_rollover', 'hpkp_days', 'pin_subdomains', 'hpkp_report_uri'):
                         if ((config_key in certificates[certificate_name]) and (config_key not in private_keys[certificate_name])):
                             private_keys[certificate_name][config_key] = certificates[certificate_name][config_key]
                             del certificates[certificate_name][config_key]
@@ -1255,7 +1257,8 @@ class AcmeManager(object):
                         + [private_key_data.backup_keys[key_type].key for key_type in private_key_data.key_options if private_key_data.backup_keys[key_type].key])
                 if (1 < len(keys)):
                     transactions += self.save_hpkp_headers(private_key_name, keys, hpkp_days,
-                                                           private_keys[private_key_name].get('pin_subdomains', self._setting('pin_subdomains')))
+                                                           private_keys[private_key_name].get('pin_subdomains', self._setting('pin_subdomains')),
+                                                           private_keys[private_key_name].get('hpkp_report_uri', self._setting('hpkp_report_uri')))
 
             processed_params = set()
             for certificate_data in private_key_data.issued_certificates:

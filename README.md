@@ -401,6 +401,9 @@ The default value is '30'.
 HPKP pin files can be turned off by setting this value to '0' or 'null'.
 * 'pin_subdomains' specifies whether the 'includeSubdomains' directive should be included in the HPKP headers.
 The default value is 'true'.
+* 'hpkp_report_uri' specified the uri to report HPKP failures to.
+The default value is 'null'.
+If not null, the 'report-uri' directive will be included in the HPKP headers.
 * 'renewal_days' specifies the number of days before expiration when the tool will attempt to renew a certificate.
 The default value is '30'.
 * 'expiration_days' specifies the number of days that private keys should be used for.
@@ -444,6 +447,7 @@ Example:
             "file_group": "ssl-cert",
             "hpkp_days": 30,
             "pin_subdomains": true,
+            "hpkp_report_uri": null,
             "renewal_days": 30,
             "expiration_days": 730,
             "auto_rollover": false,
@@ -606,6 +610,8 @@ The default value is the value specified in the 'settings' section.
 HPKP pin files can be turned off by setting this value to '0' or 'null'.
 * 'pin_subdomains' specifies whether the 'includeSubdomains' directive should be included in the HPKP headers.
 The default value is the value specified in the 'settings' section.
+* 'hpkp_report_uri' specifies the uri to report HPKP errors to.
+The default value is the value specified in the 'settings' section.
 
 Example:
 
@@ -626,7 +632,8 @@ Example:
                 "expiration_days": 730,
                 "auto_rollover": false,
                 "hpkp_days": 30,
-                "pin_subdomains": true
+                "pin_subdomains": true,
+                "hpkp_report_uri": null
             }
         }
     }
@@ -645,7 +652,7 @@ Note that a certificate configured in the 'certificates' section is equivalent t
 As such, it is an error to specify a certificate using the same name in both the 'certificates' and 'private_keys' sections.
 
 The private key and certificate settings are identical to those specified in the 'certificates' section,
-except settings relevant to the private key: 'key_size', 'key_curve', 'expiration_days', 'auto_rollover', 'hpkp_days', and 'pin_subdomains' are specified in the private key object rather than the certificate object.
+except settings relevant to the private key: 'key_size', 'key_curve', 'expiration_days', 'auto_rollover', 'hpkp_days', 'pin_subdomains', and 'hpkp_report_uri' are specified in the private key object rather than the certificate object.
 The 'key_types' setting may be specified in the certificate, private key, or both.
 
 Example:
@@ -679,7 +686,8 @@ Example:
                 "expiration_days": 730,
                 "auto_rollover": false,
                 "hpkp_days": 30,
-                "pin_subdomains": true
+                "pin_subdomains": true,
+                "hpkp_report_uri": null
             }
         },
         ...
