@@ -939,7 +939,9 @@ Example:
 This section defines the set of HPKP header files that will be generated and their contents.
 Header files for additional servers can be added at will,
 one file will be generated for each server.
-Using standard Python format strings, the '{header}' field will be replaced with the HPKP header.
+Using standard Python format strings, the '{header}' field will be replaced with the HPKP header,
+the '{key_name}' field will be replaced with the name of the private key,
+and '{server}' will be replaced with the server name.
 The default servers can be omitted by setting the header to 'null'.
 
 Example:

@@ -335,6 +335,10 @@ class AcmeManager(object):
                     os.rename(archived_file_path, original_file_path)
             raise error
 
+    def _get_list(self, config, key, default=[]):
+        value = config.get(key, default)
+        return value if (isinstance(value, collections.Iterable) and not isinstance(value, str)) else [value]
+
     def _config(self, section, key=None, default=None):
         defaults = self._config_defaults.get(section, {})
         return self.config.get(section, defaults).get(key, defaults.get(key, default)) if (key) else self.config.get(section, defaults)
@@ -388,7 +392,7 @@ class AcmeManager(object):
 
     def _get_domain_names(self, zone_dict, zone_name):
         domain_names = []
-        for host_name in zone_dict[zone_name]:
+        for host_name in self._get_list(zone_dict, zone_name):
             host_name = host_name.strip().lower()
             domain_names.append(zone_name if ('@' == host_name) else (host_name + '.' + zone_name))
         return domain_names
@@ -645,7 +649,7 @@ class AcmeManager(object):
         for server, header_format in hpkp_headers.items():
             if (header_format):
                 with FileTransaction('hpkp', self._file_path('hpkp', file_name, server=server), 0o644) as transaction:
-                    transaction.write(header_format.format(header=header))
+                    transaction.write(header_format.format(header=header, key_name=file_name, server=server))
                     transactions.append(transaction)
         return transactions
 
@@ -839,7 +843,7 @@ class AcmeManager(object):
                         break
                 else:
                     self._error('Certificate common name "', common_name, '" not listed in alt_names\n')
-                certificate_key_types |= set(key_certificates[certificate_name].get('key_types', self._key_types))
+                certificate_key_types |= set(self._get_list(key_certificates[certificate_name], 'key_types', self._key_types))
             key_options = self._get_key_options(private_keys[private_key_name])
             private_keys[private_key_name]['key_types'] = [key_type for key_type in key_options if (key_type in certificate_key_types)]
         self.config['private_keys'] = private_keys
@@ -1061,7 +1065,7 @@ class AcmeManager(object):
     def _get_key_options(self, private_key_config):
         key_size = private_key_config.get('key_size', self._setting('key_size'))
         key_curve = private_key_config.get('key_curve', self._setting('key_curve'))
-        key_types = private_key_config.get('key_types', self._key_types)
+        key_types = self._get_list(private_key_config, 'key_types', self._key_types)
         key_options = {}
         if (key_size and ('rsa' in key_types)):
             key_options['rsa'] = (key_size, )
@@ -1160,7 +1164,7 @@ class AcmeManager(object):
                     continue
 
                 common_name = key_certificates[certificate_name].get('common_name', certificate_name)
-                certificate_key_types = key_certificates[certificate_name].get('key_types', key_options.keys())
+                certificate_key_types = self._get_list(key_certificates[certificate_name], 'key_types', key_options.keys())
                 for key_type in certificate_key_types:
                     if ((key_type not in keys) or (not keys[key_type].key)):
                         self._warn('No ', key_type, ' private key available for certificate ', certificate_name, '\n')
@@ -1298,7 +1302,7 @@ class AcmeManager(object):
                 for certificate_data in private_key_data.issued_certificates:
                     certificate_name = certificate_data.certificate_name
                     self._status('Certificate ', certificate_name, ' (', certificate_data.key_type, ') installed\n')
-                    updated_services.update(certificate_data.config.get('services', []))
+                    updated_services.update(self._get_list(certificate_data.config, 'services'))
                     if (not self._setting('slave_mode')):
                         for zone_name in certificate_data.config['alt_names']:
                             if (not self._zone_key(zone_name)):
@@ -1327,7 +1331,7 @@ class AcmeManager(object):
                 revoked_certificates = []
                 certificate_count = 0
                 for certificate_name in key_certificates:
-                    certificate_key_types = key_certificates[certificate_name].get('key_types', key_options.keys())
+                    certificate_key_types = self._get_list(key_certificates[certificate_name], 'key_types', key_options.keys())
                     for key_type in certificate_key_types:
                         certificate = self.load_certificate('certificate', certificate_name, key_type)
                         if (certificate):
@@ -1362,7 +1366,7 @@ class AcmeManager(object):
                             if (self._zone_key(zone_name)):
                                 if (zone_name not in updated_tlsa_zones):
                                     updated_tlsa_zones[zone_name] = []
-                                updated_tlsa_zones[zone_name] += self._tlsa_data(tlsa_records[zone_name])
+                                updated_tlsa_zones[zone_name] += self._tlsa_data(self._get_list(tlsa_records, zone_name))
                             else:
                                 self._warn('No update key configured for zone ', zone_name, ', unable to remove TLSA records\n')
 
@@ -1404,7 +1408,7 @@ class AcmeManager(object):
                 if (tlsa_records):
                     certificates = []
                     chain = []
-                    certificate_key_types = key_certificates[certificate_name].get('key_types', key_options.keys())
+                    certificate_key_types = self._get_list(key_certificates[certificate_name], 'key_types', key_options.keys())
                     for key_type in certificate_key_types:
                         certificates.append(self.load_certificate('certificate', certificate_name, key_type))
                         chain += self.load_chain(certificate_name, key_type)
@@ -1413,7 +1417,7 @@ class AcmeManager(object):
                         if (self._zone_key(zone_name)):
                             if (zone_name not in tlsa_zones):
                                 tlsa_zones[zone_name] = []
-                            tlsa_zones[zone_name] += self._tlsa_data(tlsa_records[zone_name], certificates=certificates,
+                            tlsa_zones[zone_name] += self._tlsa_data(self._get_list(tlsa_records, zone_name), certificates=certificates,
                                                                      chain=(chain + root_certificates),
                                                                      private_keys=[key for key_type, key in keys if (key_type in certificate_key_types)])
                         else:
