@@ -63,8 +63,10 @@
         "coturn": "systemctl restart coturn",
         "dovecot": "systemctl restart dovecot",
         "etherpad": "systemctl restart etherpad",
+        "mysql": "systemctl reload mysql",
         "nginx": "systemctl reload nginx",
         "postfix": "systemctl reload postfix",
+        "postgresql": "systemctl reload postgresql",
         "prosody": "systemctl restart prosody",
         "synapse": "systemctl restart matrix-synapse",
         "znc": "systemctl restart znc"
