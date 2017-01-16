@@ -401,7 +401,7 @@ The default value is '30'.
 HPKP pin files can be turned off by setting this value to '0' or 'null'.
 * 'pin_subdomains' specifies whether the 'includeSubdomains' directive should be included in the HPKP headers.
 The default value is 'true'.
-* 'hpkp_report_uri' specified the uri to report HPKP failures to.
+* 'hpkp_report_uri' specifies the uri to report HPKP failures to.
 The default value is 'null'.
 If not null, the 'report-uri' directive will be included in the HPKP headers.
 * 'renewal_days' specifies the number of days before expiration when the tool will attempt to renew a certificate.
@@ -612,6 +612,7 @@ HPKP pin files can be turned off by setting this value to '0' or 'null'.
 The default value is the value specified in the 'settings' section.
 * 'hpkp_report_uri' specifies the uri to report HPKP errors to.
 The default value is the value specified in the 'settings' section.
+If not null, the 'report-uri' directive will be included in the HPKP headers.
 
 Example:
 
