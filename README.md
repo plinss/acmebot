@@ -84,7 +84,7 @@ Requires Python 3.4+ and the acme and py3dns packages.
 On Debian, these can be installed via:
 
     apt-get install build-essential libssl-dev libffi-dev python3-dev python3-pip
-    pip3 install acme py3dns
+    pip3 install -r requirements.txt
 
 Clone this repository or download the 'acmebot' file and install it on your server.
 Copy the 'acmebot.example.json' file to 'acmebot.json' and edit the configuration options.
@@ -520,6 +520,9 @@ Example:
         ...
     }
 
+Directory values are treated as Python format strings,
+fields available for directories are: 'name', 'key_type', 'suffix', 'server'.
+The 'name' field is the name of the private key or certificate.
 
 ### Services
 
@@ -916,6 +919,8 @@ Example:
 ### File Name Patterns
 
 All output file names can be overridden using standard Python format strings.
+Fields available for file names are: 'name', 'key_type', 'suffix', 'server'.
+The 'name' field is the name of the private key or certificate.
 
 * 'private_key' specifies the name of primary private key files.
 * 'backup_key' speficies the name of backup private key files.

@@ -353,16 +353,17 @@ class AcmeManager(object):
         return self._config('settings', key)
 
     def _directory(self, file_type):
-        return self._config('directories', file_type)
+        return self._config('directories', file_type, '')
 
     def _key_type_suffix(self, key_type):
-        return self._config('key_type_suffixes', key_type)
+        return self._config('key_type_suffixes', key_type, '')
 
     def _file_name(self, file_type):
         return self._config('file_names', file_type, '')
 
     def _file_path(self, file_type, file_name, key_type=None, **kwargs):
-        return os.path.join(self._directory(file_type), self._file_name(file_type).format(name=file_name, suffix=self._key_type_suffix(key_type), **kwargs))
+        return os.path.join(self._directory(file_type).format(name=file_name, key_type=key_type, suffix=self._key_type_suffix(key_type), **kwargs),
+                            self._file_name(file_type).format(name=file_name, key_type=key_type, suffix=self._key_type_suffix(key_type), **kwargs))
 
     def _service(self, service_name):
         return self._config('services', service_name)
