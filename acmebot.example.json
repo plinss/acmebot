@@ -11,8 +11,8 @@
         "file_user": "root",
         "file_group": "ssl-cert",
         "hpkp_days": 30,
-        "hpkp_report_uri": null,
         "pin_subdomains": true,
+        "hpkp_report_uri": null,
         "renewal_days": 30,
         "expiration_days": 730,
         "auto_rollover": false,
@@ -99,8 +99,8 @@
             "expiration_days": 730,
             "auto_rollover": false,
             "hpkp_days": 30,
-            "hpkp_report_uri": null,
-            "pin_subdomains": true
+            "pin_subdomains": true,
+            "hpkp_report_uri": null
         }
     },
     "private_keys": {
@@ -136,8 +136,8 @@
             "expiration_days": 730,
             "auto_rollover": false,
             "hpkp_days": 30,
-            "hpkp_report_uri": null,
-            "pin_subdomains": true
+            "pin_subdomains": true,
+            "hpkp_report_uri": null
         }
     },
     "authorizations": {

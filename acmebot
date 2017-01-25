@@ -342,9 +342,8 @@ class AcmeManager(object):
         value = config.get(key, default)
         return value if (isinstance(value, collections.Iterable) and not isinstance(value, str)) else [value]
 
-    def _config(self, section, key=None, default=None):
-        defaults = self._config_defaults.get(section, {})
-        return self.config.get(section, defaults).get(key, defaults.get(key, default)) if (key) else self.config.get(section, defaults)
+    def _config(self, section_name, key=None, default=None):
+        return self.config.get(section_name, {}).get(key, default) if (key) else self.config.get(section_name, {})
 
     def _account(self, key):
         return self._config('account', key)
@@ -817,7 +816,15 @@ class AcmeManager(object):
         req.sign(private_key, 'sha256')
         return req
 
-    def _validate_certificates(self):
+    def _validate_config(self):
+        for section_name, default_section in self._config_defaults.items():
+            if (section_name not in self.config):
+                self.config[section_name] = default_section
+            else:
+                for key, value in default_section.items():
+                    if (key not in self.config[section_name]):
+                        self.config[section_name][key] = value
+
         private_keys = self.config.get('private_keys', collections.OrderedDict())
         if ('certificates' in self.config): # convert bare certificate definitions to private key definitions
             certificates = self.config['certificates']
@@ -1441,7 +1448,7 @@ class AcmeManager(object):
         return False
 
     def run(self):
-        self._validate_certificates()
+        self._validate_config()
         pid_file_path = os.path.join(self._directory('pid'), self.script_name + '.pid')
         if (self._process_running(pid_file_path)):
             self._error('Client already running\n')
