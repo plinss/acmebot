@@ -404,6 +404,8 @@ The default value is 'true'.
 * 'hpkp_report_uri' specifies the uri to report HPKP failures to.
 The default value is 'null'.
 If not null, the 'report-uri' directive will be included in the HPKP headers.
+* 'ocsp_must_staple' specifies if the OCSP Must-Staple extension is added to certificates.
+The default value is 'false'.
 * 'renewal_days' specifies the number of days before expiration when the tool will attempt to renew a certificate.
 The default value is '30'.
 * 'expiration_days' specifies the number of days that private keys should be used for.
@@ -448,6 +450,7 @@ Example:
             "hpkp_days": 30,
             "pin_subdomains": true,
             "hpkp_report_uri": null,
+            "ocsp_must_staple": false,
             "renewal_days": 30,
             "expiration_days": 730,
             "auto_rollover": false,
@@ -618,6 +621,8 @@ The default value is the value specified in the 'settings' section.
 * 'hpkp_report_uri' specifies the uri to report HPKP errors to.
 The default value is the value specified in the 'settings' section.
 If not null, the 'report-uri' directive will be included in the HPKP headers.
+* 'ocsp_must_staple' specifies if the OCSP Must-Staple extension is added to certificates.
+The default value is the value specified in the 'settings' section.
 
 Example:
 
@@ -639,7 +644,8 @@ Example:
                 "auto_rollover": false,
                 "hpkp_days": 30,
                 "pin_subdomains": true,
-                "hpkp_report_uri": null
+                "hpkp_report_uri": null,
+                "ocsp_must_staple": false
             }
         }
     }
@@ -676,7 +682,8 @@ Example:
                         "services": ["nginx"],
                         "key_types": ["rsa"],
                         "dhparam_size": 2048,
-                        "ecparam_curve": "secp384r1"
+                        "ecparam_curve": "secp384r1",
+                        "ocsp_must_staple": true
                     },
                     "mail.example.com": {
                         "alt_names": {

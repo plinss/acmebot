@@ -13,6 +13,7 @@
         "hpkp_days": 30,
         "pin_subdomains": true,
         "hpkp_report_uri": null,
+        "ocsp_must_staple": false,
         "renewal_days": 30,
         "expiration_days": 730,
         "auto_rollover": false,
@@ -100,7 +101,8 @@
             "auto_rollover": false,
             "hpkp_days": 30,
             "pin_subdomains": true,
-            "hpkp_report_uri": null
+            "hpkp_report_uri": null,
+            "ocsp_must_staple": false
         }
     },
     "private_keys": {
@@ -127,7 +129,8 @@
                     },
                     "dhparam_size": 2048,
                     "ecparam_curve": "secp384r1",
-                    "key_types": ["rsa", "ecdsa"]
+                    "key_types": ["rsa", "ecdsa"],
+                    "ocsp_must_staple": false
                 }
             },
             "key_types": ["rsa", "ecdsa"],

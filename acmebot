@@ -143,6 +143,7 @@ class AcmeManager(object):
                 'hpkp_days': 30,
                 'pin_subdomains': True,
                 'hpkp_report_uri': None,
+                'ocsp_must_staple': False,
                 'renewal_days': 30,
                 'expiration_days': 730,
                 'auto_rollover': False,
@@ -377,6 +378,9 @@ class AcmeManager(object):
                 key_data['file'] = os.path.join(self._directory('update_key'), key_data['file'])
                 return key_data
         return None
+
+    def _option(self, config, key):
+        return config.get(key, self._setting(key))
 
     def _datetime_from_asn1_generaltime(self, general_time):
         try:
@@ -1074,8 +1078,8 @@ class AcmeManager(object):
             self._status('Authorization timed out for ', authorization_resource.body.identifier.value, '\n')
 
     def _get_key_options(self, private_key_config):
-        key_size = private_key_config.get('key_size', self._setting('key_size'))
-        key_curve = private_key_config.get('key_curve', self._setting('key_curve'))
+        key_size = self._option(private_key_config, 'key_size')
+        key_curve = self._option(private_key_config, 'key_curve')
         key_types = self._get_list(private_key_config, 'key_types', self._key_types)
         key_options = {}
         if (key_size and ('rsa' in key_types)):
@@ -1101,8 +1105,8 @@ class AcmeManager(object):
                 self._warn('No configured private key types for ', private_key_name, '\n')
                 continue
 
-            hpkp_days = private_keys[private_key_name].get('hpkp_days', self._setting('hpkp_days'))
-            expiration_days = private_keys[private_key_name].get('expiration_days', self._setting('expiration_days'))
+            hpkp_days = self._option(private_keys[private_key_name], 'hpkp_days')
+            expiration_days = self._option(private_keys[private_key_name], 'expiration_days')
 
             rolled_private_key = False
             generated_private_key = False
@@ -1120,7 +1124,7 @@ class AcmeManager(object):
 
             rollover = False
             if (self.args.rollover
-                 or (private_keys[private_key_name].get('auto_rollover', self._setting('auto_rollover'))
+                 or (self._option(private_keys[private_key_name], 'auto_rollover')
                      and self._time_to_rollover(oldest_key_timestamp, expiration_days))):
                 if (self.args.force_rollover or self._safe_to_rollover(youngest_key_timestamp, hpkp_days)):
                     rollover = True
@@ -1214,7 +1218,8 @@ class AcmeManager(object):
                                             self._debug('Certificate valid beyond renewal window\n')
                                             continue
 
-                    csr = self.generate_csr(keys[key_type].key, common_name, alt_names)
+                    csr = self.generate_csr(keys[key_type].key, common_name, alt_names,
+                                            self._option(key_certificates[certificate_name], 'ocsp_must_staple'))
                     self._status('Requesting ', key_type, ' certificate for ', common_name, (' with alt names: ' + ', '.join(alt_names)) if (alt_names) else '', '\n')
                     try:
                         certificate_resource = self.acme_client.request_issuance(jose.ComparableX509(csr),
@@ -1259,15 +1264,15 @@ class AcmeManager(object):
                     transactions.append(self.save_private_key('backup_key', private_key_name, key_type,
                                                               backup_keys[key_type].key, timestamp=backup_keys[key_type].timestamp))
 
-            hpkp_days = private_keys[private_key_name].get('hpkp_days', self._setting('hpkp_days'))
+            hpkp_days = self._option(private_keys[private_key_name], 'hpkp_days')
             if ((0 < hpkp_days) and (self._directory('hpkp'))
                     and (private_key_data.generated_key or private_key_data.changed_key or generated_backup_key or not self.hpkp_headers_present(private_key_name))):
                 keys = ([private_key_data.keys[key_type].key for key_type in private_key_data.key_options if private_key_data.keys[key_type].key]
                         + [private_key_data.backup_keys[key_type].key for key_type in private_key_data.key_options if private_key_data.backup_keys[key_type].key])
                 if (1 < len(keys)):
                     transactions += self.save_hpkp_headers(private_key_name, keys, hpkp_days,
-                                                           private_keys[private_key_name].get('pin_subdomains', self._setting('pin_subdomains')),
-                                                           private_keys[private_key_name].get('hpkp_report_uri', self._setting('hpkp_report_uri')))
+                                                           self._option(private_keys[private_key_name], 'pin_subdomains'),
+                                                           self._option(private_keys[private_key_name], 'hpkp_report_uri'))
 
             processed_params = set()
             for certificate_data in private_key_data.issued_certificates:
@@ -1278,13 +1283,13 @@ class AcmeManager(object):
                     generated_params = False
                     dhparam_pem, ecparam_pem = self.load_params(certificate_name) if (not private_key_data.rolled_key) else (None, None)
                     if (not dhparam_pem):
-                        dhparam_size = certificate_data.config.get('dhparam_size', self._setting('dhparam_size'))
+                        dhparam_size = self._option(certificate_data.config, 'dhparam_size')
                         if (dhparam_size):
                             self._status('Generating Diffie-Hellman parameters for ', certificate_name, '\n')
                             dhparam_pem = self.generate_dhparam(dhparam_size)
                             generated_params = True
                     if (not ecparam_pem):
-                        ecparam_curve = certificate_data.config.get('ecparam_curve', self._setting('ecparam_curve'))
+                        ecparam_curve = self._option(certificate_data.config, 'ecparam_curve')
                         if (ecparam_curve):
                             self._status('Generating elliptical curve parameters for ', certificate_name, '\n')
                             ecparam_pem = self.generate_ecparam(ecparam_curve)
