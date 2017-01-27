@@ -85,9 +85,9 @@ class AcmeManager(object):
             pass
 
     def __init__(self):
-        script_dir = os.path.dirname(os.path.realpath(__file__))
+        self.script_dir = os.path.dirname(os.path.realpath(__file__))
         self.script_name = os.path.basename(__file__)
-        self.script_version = '1.1'
+        self.script_version = '1.2'
 
         argparser = argparse.ArgumentParser(description='ACME Certificate Manager')
         argparser.add_argument('--version', action='version', version='%(prog)s ' + self.script_version)
@@ -129,7 +129,7 @@ class AcmeManager(object):
 
         self.authorizations = {}
 
-        self.config, self.config_file_path = self._load_config(self.args.config_path, ('.', os.path.join('/etc', self.script_name), script_dir))
+        self.config, self.config_file_path = self._load_config(self.args.config_path, ('.', os.path.join('/etc', self.script_name), self.script_dir))
         self._key_types = ('rsa', 'ecdsa')
         self._config_defaults = {
             'settings': {
@@ -202,9 +202,6 @@ class AcmeManager(object):
                 'znc': 'systemctl restart znc'
             }
         }
-
-        self.resource_dir = os.path.join(script_dir, self._directory('resource'))
-        self._makedir(self.resource_dir, 0o600)
 
     def _load_config(self, file_path, search_paths=[]):
         search_paths = [''] if (os.path.isabs(file_path)) else search_paths
@@ -861,7 +858,9 @@ class AcmeManager(object):
         self.config['private_keys'] = private_keys
 
     def connect_client(self):
-        client_key_path = os.path.join(self.resource_dir, 'client_key.json')
+        resource_dir = os.path.join(self.script_dir, self._directory('resource'))
+        self._makedir(resource_dir, 0o600)
+        client_key_path = os.path.join(resource_dir, 'client_key.json')
         if (os.path.isfile(client_key_path)):
             with open(client_key_path) as client_key_file:
                 self.client_key = jose.JWKRSA.fields_from_json(json.load(client_key_file))
@@ -881,7 +880,7 @@ class AcmeManager(object):
         except Exception as error:
             self._error("Can't connect to ACME service.\n", error, '\n')
 
-        registration_path = os.path.join(self.resource_dir, 'registration.json')
+        registration_path = os.path.join(resource_dir, 'registration.json')
         if (os.path.isfile(registration_path)):
             with open(registration_path) as registration_file:
                 self.registration = messages.RegistrationResource.json_loads(registration_file.read())
