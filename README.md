@@ -92,6 +92,10 @@ The configuration file can be placed in the current directory that the tool is r
 the /etc/acmebot directory,
 or the same directory that the acmebot tool is installed in.
 
+By default, debug level output will be written to a log file.
+A configuration file for logrotate is provided in the logrotate.d directory,
+you may want to copy, or create a link to this file in /etc/logrotate.d.
+
 Note that when using dns-01 authorizations via a local DNS server,
 this tool needs to be able to add, remove, and update DNS records.
 This can be achieved by installing it on your master DNS server and using [bindtool] to manage the zone file,
@@ -375,6 +379,9 @@ All of these need only be present when the desired value is different from the d
 The defalt value is 'false' (master mode).
 The master will obtain authorizations and issue certificates,
 a slave will not attempt to obtain authorizations but can issue certificates.
+* 'log_level' specifies the amount of information written into the log file.
+Possible values are 'null', 'normal', 'debug', and 'verbose'.
+'debug' and 'verbose' setting correlate to the '--debug' and '--verbose' command-line options.
 * 'key_size' specifies the size (in bits) for RSA private keys.
 The default value is '4096'.
 RSA certificates can be turned off by setting this value to '0' or 'null'.
@@ -441,6 +448,7 @@ Example:
         ...
         "settings": {
             "slave_mode": false,
+            "log_level": "debug",
             "key_size": 4096,
             "key_curve": "secp384r1",
             "dhparam_size": 2048,
@@ -473,6 +481,8 @@ All of these need only be present when the desired value is different from the d
 
 * 'pid' specifies the directory to store a process ID file.
 The default value is '/var/run'.
+* 'log' specifies the directory to store the log file.
+The default value is '/var/log/acmebot'.
 * 'resource' specifies the directory to store the client key and registration files for the ACME account.
 The default value is '/var/local/acmebot'.
 * 'private_key' specifies the directory to store primary private key files.
@@ -507,6 +517,7 @@ Example:
         ...
         "directories": {
             "pid": "/var/run",
+            "log": "/var/log/acmebot",
             "resource": "/var/local/acmebot",
             "private_key": "/etc/ssl/private",
             "backup_key": "/etc/ssl/private",
@@ -929,6 +940,7 @@ All output file names can be overridden using standard Python format strings.
 Fields available for file names are: 'name', 'key_type', 'suffix', 'server'.
 The 'name' field is the name of the private key or certificate.
 
+* 'log' specifies the name of the log file.
 * 'private_key' specifies the name of primary private key files.
 * 'backup_key' speficies the name of backup private key files.
 * 'full_key' speficies the name of primary private key files that include the certificate chain.
@@ -943,6 +955,7 @@ Example:
 
     {   ...
         "file_names": {
+            "log": "acmebot.log",
             "private_key": "{name}{suffix}.key",
             "backup_key": "{name}_backup{suffix}.key",
             "full_key": "{name}_full{suffix}.key",

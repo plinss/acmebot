@@ -4,6 +4,7 @@
     },
     "settings": {
         "slave_mode": false,
+        "log_level": "debug",
         "key_size": 4096,
         "key_curve": "secp384r1",
         "dhparam_size": 2048,
@@ -27,6 +28,7 @@
     },
     "directories": {
         "pid": "/var/run",
+        "log": "/var/log/acmebot",
         "resource": "/var/local/acmebot",
         "private_key": "/etc/ssl/private",
         "backup_key": "/etc/ssl/private",
@@ -45,6 +47,7 @@
         "ecdsa": ".ecdsa"
     },
     "file_names": {
+        "log": "acmebot.log",
         "private_key": "{name}{suffix}.key",
         "backup_key": "{name}_backup{suffix}.key",
         "full_key": "{name}_full{suffix}.key",

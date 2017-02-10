@@ -134,6 +134,7 @@ class AcmeManager(object):
         self._config_defaults = {
             'settings': {
                 'slave_mode': False,
+                'log_level': 'debug',
                 'key_size': 4096,
                 'key_curve': 'secp384r1',
                 'dhparam_size': 2048,
@@ -157,6 +158,7 @@ class AcmeManager(object):
             },
             'directories': {
                 'pid': '/var/run',
+                'log': os.path.join('/var/log', self.script_name),
                 'resource': os.path.join('/var/local', self.script_name),
                 'private_key': '/etc/ssl/private',
                 'backup_key': '/etc/ssl/private',
@@ -175,6 +177,7 @@ class AcmeManager(object):
                 'ecdsa': '.ecdsa'
             },
             'file_names': {
+                'log': self.script_name + '.log',
                 'private_key': '{name}{suffix}.key',
                 'backup_key': '{name}_backup{suffix}.key',
                 'full_key': '{name}_full{suffix}.key',
@@ -225,23 +228,37 @@ class AcmeManager(object):
     def _status(self, *args):
         if (not self.args.quiet):
             sys.stdout.write(self._message(*args))
+        if (self._setting('log_level') in ['normal', 'debug', 'verbose']):
+            self._log(*args)
 
     def _debug(self, *args):
         if ((self.args.debug or self.args.verbose) and not self.args.quiet):
             sys.stdout.write(self._message(*args))
+        if (self._setting('log_level') in ['debug', 'verbose']):
+            self._log(*args)
 
     def _note(self, *args):
         if (self.args.verbose and not self.args.quiet):
             sys.stdout.write(self._message(*args))
+        if (self._setting('log_level') == 'verbose'):
+            self._log(*args)
 
     def _warn(self, *args):
         if (not self.args.quiet):
             sys.stderr.write(self._message(*args))
+        if (self._setting('log_level') in ['normal', 'debug', 'verbose']):
+            self._log(*args)
 
     def _error(self, *args):
         message = self._message(*args)
         sys.stderr.write(message)
+        self._log(message)
         raise AcmeError(message)
+
+    def _log(self, *args):
+        if (self._directory('log') and self._file_name('log') and self._setting('log_level')):
+            with self._open_file(self._file_path('log', self.script_name), 'a+', 0o640) as log_file:
+                log_file.write(self._message(*args))
 
     def _makedir(self, dir_path, chmod=None):
         if (not os.path.isdir(dir_path)):
@@ -264,7 +281,7 @@ class AcmeManager(object):
     def _open_file(self, file_path, mode='r', chmod=0o777):
         def opener(file_path, flags):
             return os.open(file_path, flags, mode=chmod)
-        if (('w' in mode) and isinstance(file_path, str)):
+        if ((('w' in mode) or ('a' in mode)) and isinstance(file_path, str)):
             self._makedir(os.path.dirname(file_path), chmod)
         return open(file_path, mode, opener=opener)
 
@@ -1453,6 +1470,7 @@ class AcmeManager(object):
 
     def run(self):
         self._validate_config()
+        self._log('\n', self.script_name, ' executed at ', str(datetime.datetime.now()), '\n')
         pid_file_path = os.path.join(self._directory('pid'), self.script_name + '.pid')
         if (self._process_running(pid_file_path)):
             self._error('Client already running\n')
