@@ -1,0 +1,8 @@
+/var/log/acmebot/*.log {
+        weekly
+        missingok
+        rotate 12
+        compress
+        delaycompress
+        notifempty
+}

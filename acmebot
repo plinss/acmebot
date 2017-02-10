@@ -599,7 +599,7 @@ class AcmeManager(object):
             return self.generate_rsa_key(*options)
         if ('ecdsa' == key_type):
             return self.generate_ecdsa_key(*options)
-        self._warn('Unknown key type ', key_type, '\n')
+        self._warn('Unknown key type ', key_type.upper(), '\n')
         return None
 
     def load_private_key(self, file_type, file_name, key_type):
@@ -1171,7 +1171,7 @@ class AcmeManager(object):
 
             for key_type, options in key_options.items():
                 if (not keys[key_type].key):
-                    self._status('Generating primary ', key_type, ' key for ', private_key_name, '\n')
+                    self._status('Generating primary ', key_type.upper(), ' key for ', private_key_name, '\n')
                     private_key = self.generate_private_key(key_type, options)
                     keys[key_type] = KeyData(private_key, None)
                     if (private_key):
@@ -1202,7 +1202,7 @@ class AcmeManager(object):
                 certificate_key_types = self._get_list(key_certificates[certificate_name], 'key_types', key_options.keys())
                 for key_type in certificate_key_types:
                     if ((key_type not in keys) or (not keys[key_type].key)):
-                        self._warn('No ', key_type, ' private key available for certificate ', certificate_name, '\n')
+                        self._warn('No ', key_type.upper(), ' private key available for certificate ', certificate_name, '\n')
                         continue
 
                     if ((not rolled_private_key) and (not self.args.renew)):
@@ -1210,7 +1210,7 @@ class AcmeManager(object):
                         if (existing_certificate):
                             certificate_common_name = existing_certificate.get_subject().commonName
                             if (common_name != certificate_common_name):
-                                self._status('Common name changed for ', key_type, ' certificate ', certificate_name, ' from ', certificate_common_name, ' to ', common_name, '\n')
+                                self._status('Common name changed for ', key_type.upper(), ' certificate ', certificate_name, ' from ', certificate_common_name, ' to ', common_name, '\n')
                             else:
                                 certificate_alt_names = self.get_alt_names(existing_certificate)
                                 new_alt_names = set(alt_names)
@@ -1218,40 +1218,40 @@ class AcmeManager(object):
                                 if (new_alt_names != existing_alt_names):
                                     added_alt_names = new_alt_names - existing_alt_names
                                     removed_alt_names = existing_alt_names - new_alt_names
-                                    self._status('Alt names changed for ', key_type, ' certificate ', certificate_name,
+                                    self._status('Alt names changed for ', key_type.upper(), ' certificate ', certificate_name,
                                                  (', adding ' + ', '.join([alt_name for alt_name in alt_names if (alt_name in added_alt_names)])) if added_alt_names else '',
                                                  (', removing ' + ', '.join([alt_name for alt_name in certificate_alt_names if (alt_name in removed_alt_names)])) if removed_alt_names else '',
                                                  '\n')
                                 else:
                                     if (not self._private_key_matches_certificate(keys[key_type].key, existing_certificate)):
-                                        self._status(key_type.capitalize(), ' certificate ', certificate_name, ' public key does not match private key\n')
+                                        self._status(key_type.upper(), ' certificate ', certificate_name, ' public key does not match private key\n')
                                         changed_private_key = True
                                     else:
                                         valid_duration = self._datetime_from_asn1_generaltime(existing_certificate.get_notAfter()) - datetime.datetime.now()
                                         if (valid_duration.days < 0):
-                                            self._status(key_type.capitalize(), ' certificate ', certificate_name, ' has expired\n')
+                                            self._status(key_type.upper(), ' certificate ', certificate_name, ' has expired\n')
                                         elif (valid_duration.days < self._setting('renewal_days')):
-                                            self._status(key_type.capitalize(), ' certificate ', certificate_name, ' will expire in ',
+                                            self._status(key_type.upper(), ' certificate ', certificate_name, ' will expire in ',
                                                          (str(valid_duration.days) + ' days') if (valid_duration.days) else 'less than a day',
                                                          '\n')
                                         else:
-                                            self._debug(key_type.capitalize(), ' certificate valid beyond renewal window\n')
+                                            self._debug(key_type.upper(), ' certificate valid beyond renewal window\n')
                                             continue
 
                     csr = self.generate_csr(keys[key_type].key, common_name, alt_names,
                                             self._option(key_certificates[certificate_name], 'ocsp_must_staple'))
-                    self._status('Requesting ', key_type, ' certificate for ', common_name, (' with alt names: ' + ', '.join(alt_names)) if (alt_names) else '', '\n')
+                    self._status('Requesting ', key_type.upper(), ' certificate for ', common_name, (' with alt names: ' + ', '.join(alt_names)) if (alt_names) else '', '\n')
                     try:
                         certificate_resource = self.acme_client.request_issuance(jose.ComparableX509(csr),
                                                                                  [self.authorizations[domain_name] for domain_name in alt_names])
                     except Exception as error:
-                        self._warn(key_type.capitalize(), ' certificate issuance failed\n', error, '\n')
+                        self._warn(key_type.upper(), ' certificate issuance failed\n', error, '\n')
                         if (rolled_private_key):
                             issued_certificates = []    # do not partially install new certificates if private key changed
                             break
                         continue
 
-                    self._debug('New ', key_type, ' certificate issued\n')
+                    self._debug('New ', key_type.upper(), ' certificate issued\n')
                     chain = self.acme_client.fetch_chain(certificate_resource)
                     issued_certificates.append(CertificateData(certificate_name, key_type, certificate_resource.body, chain, key_certificates[certificate_name]))
 
@@ -1269,7 +1269,7 @@ class AcmeManager(object):
             backup_keys = private_key_data.backup_keys
             for key_type, options in private_key_data.key_options.items():
                 if (not backup_keys[key_type].key):
-                    self._status('Generating backup ', key_type, ' key for ', private_key_name, '\n')
+                    self._status('Generating backup ', key_type.upper(), ' key for ', private_key_name, '\n')
                     backup_keys[key_type] = KeyData(self.generate_private_key(key_type, options), None)
                     generated_backup_key = True
 
@@ -1337,7 +1337,7 @@ class AcmeManager(object):
                     self._status('Private keys for ', private_key_name, ' installed\n')
                 for certificate_data in private_key_data.issued_certificates:
                     certificate_name = certificate_data.certificate_name
-                    self._status(certificate_data.key_type.capitalize(), ' certificate ', certificate_name, ' installed\n')
+                    self._status(certificate_data.key_type.upper(), ' certificate ', certificate_name, ' installed\n')
                     updated_services.update(self._get_list(certificate_data.config, 'services'))
                     if (not self._setting('slave_mode')):
                         for zone_name in certificate_data.config['alt_names']:
@@ -1375,11 +1375,11 @@ class AcmeManager(object):
                             try:
                                 self.acme_client.revoke(certificate)
                                 revoked_certificates.append((certificate_name, key_type))
-                                self._status(key_type.capitalize(), ' certificate ', certificate_name, ' revoked\n')
+                                self._status(key_type.upper(), ' certificate ', certificate_name, ' revoked\n')
                             except Exception as error:
-                                self._warn('Unable to revoke ', key_type, ' certificate ', certificate_name, '\n', error, '\n')
+                                self._warn('Unable to revoke ', key_type.upper(), ' certificate ', certificate_name, '\n', error, '\n')
                         else:
-                            self._warn(key_type.capitalize(), ' certificate ', certificate_name, ' not found\n')
+                            self._warn(key_type.upper(), ' certificate ', certificate_name, ' not found\n')
 
                 archive_date = datetime.datetime.now()
                 processed_tlsa = set()
