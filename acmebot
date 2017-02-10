@@ -45,8 +45,10 @@ CertificateData = collections.namedtuple('CertificateData', ['certificate_name',
 TLSAData = collections.namedtuple('TLSAData', ['host', 'port', 'usage', 'selector', 'protocol', 'ttl',
                                                'certificates', 'chain', 'private_keys'])
 
+
 class AcmeError(Exception):
     pass
+
 
 class FileTransaction(object):
     __slots__ = ['file', 'temp_file_path', 'file_type', 'file_path', 'chmod', 'timestamp']
@@ -74,6 +76,7 @@ class FileTransaction(object):
     def write(self, data):
         self.file.write(data)
 
+
 class AcmeManager(object):
     @classmethod
     def Run(cls):
@@ -91,7 +94,7 @@ class AcmeManager(object):
 
         argparser = argparse.ArgumentParser(description='ACME Certificate Manager')
         argparser.add_argument('--version', action='version', version='%(prog)s ' + self.script_version)
-        argparser.add_argument('private_key_names', nargs = '*')
+        argparser.add_argument('private_key_names', nargs='*')
         argparser.add_argument('-q', '--quiet',
                                action='store_true', dest='quiet', default=False,
                                help="Don't print status messages to stdout or warnings to stderr")
@@ -102,7 +105,7 @@ class AcmeManager(object):
                                action='store_true', dest='verbose', default=False,
                                help='Print more detailed debugging information to stdout')
         argparser.add_argument('-c', '--config',
-                               dest='config_path', default=self.script_name+'.json', metavar='CONFIG_PATH',
+                               dest='config_path', default=self.script_name + '.json', metavar='CONFIG_PATH',
                                help='Specify file path for config')
         argparser.add_argument('-r', '--rollover',
                                action='store_true', dest='rollover', default=False,
@@ -389,7 +392,7 @@ class AcmeManager(object):
         key_data = self._config('zone_update_keys', zone_name)
         if (key_data):
             if (isinstance(key_data, str)):
-                return { 'file': os.path.join(self._directory('update_key'), key_data) }
+                return {'file': os.path.join(self._directory('update_key'), key_data)}
             if ('file' in key_data):
                 key_data = key_data.copy()
                 key_data['file'] = os.path.join(self._directory('update_key'), key_data['file'])
@@ -420,7 +423,7 @@ class AcmeManager(object):
 
     def _reload_zone(self, zone_name):
         try:
-            output = subprocess.check_output([self._setting('reload_zone_command'), zone_name], stderr=subprocess.STDOUT)
+            subprocess.check_output([self._setting('reload_zone_command'), zone_name], stderr=subprocess.STDOUT)
             self._debug('Reloading zone ', zone_name, '\n')
             time.sleep(2)
         except subprocess.CalledProcessError as error:
@@ -462,7 +465,7 @@ class AcmeManager(object):
             response = DNS.Request(server=name_server).req(name='_{port}._{protocol}.{host}'.format(port=port, protocol=protocol, host=host), qtype=52, protocol='tcp')
             if ('NOERROR' == response.header['status']):
                 return ['{} {} {} {}'.format(answer['data'][0], answer['data'][1], answer['data'][2], binascii.hexlify(answer['data'][3:]).decode('ascii'))
-                         for answer in response.answers]
+                        for answer in response.answers]
         except Exception as error:
             self._note('DNS Error: ', error, '\n')
         return []
@@ -472,8 +475,8 @@ class AcmeManager(object):
         update_commands = '{server}zone {zone}\n{update}\nsend\n'.format(server=server, zone=zone_name, update='\n'.join(updates))
         try:
             self._note('nsupdate:\n', update_commands)
-            output = subprocess.check_output([self._setting('nsupdate_command'), '-v', '-k', zone_key['file']],
-                                             input=update_commands.encode('ascii'), stderr=subprocess.STDOUT)
+            subprocess.check_output([self._setting('nsupdate_command'), '-v', '-k', zone_key['file']],
+                                    input=update_commands.encode('ascii'), stderr=subprocess.STDOUT)
             self._debug(operation, ' records for ', zone_name, '\n')
             return True
         except subprocess.CalledProcessError as error:
@@ -484,19 +487,19 @@ class AcmeManager(object):
 
     def _set_dns_challenges(self, zone_name, zone_key, challenges):
         updates = ['update add _acme-challenge.{host} 300 TXT "{challenge}"'.format(host=host_name, challenge=challenges[host_name])
-                    for host_name in challenges]
+                   for host_name in challenges]
         return self._update_zone(updates, zone_name, zone_key, 'Set DNS challenges')
 
     def _remove_dns_challenges(self, zone_name, zone_key, challenges):
         updates = ['update delete _acme-challenge.{host} 300 TXT "{challenge}"'.format(host=host_name, challenge=challenges[host_name])
-                    for host_name in challenges]
+                   for host_name in challenges]
         self._update_zone(updates, zone_name, zone_key, 'Remove DNS challenges')
 
     def _tlsa_data(self, records, certificates=None, chain=[], private_keys=None):
         data = []
         for record in records:
             if (isinstance(record, str)):
-                record = { 'host': record }
+                record = {'host': record}
             data.append(TLSAData(record.get('host', '@'), record.get('port', 443),
                                  record.get('usage', 'pkix-ee'), record.get('selector', 'spki'),
                                  record.get('protocol', 'tcp'), record.get('ttl', 300),
@@ -504,8 +507,7 @@ class AcmeManager(object):
         return data
 
     def _set_tlsa_records(self, zone_name, zone_key, tlsa_records):
-        usage = { 'pkix-ta': '0', 'pkix-ee': '1', 'dane-ta': '2', 'dane-ee': '3' }
-        selector = { 'cert': '0', 'spki': '1' }
+        usage = {'pkix-ta': '0', 'pkix-ee': '1', 'dane-ta': '2', 'dane-ee': '3'}
         updates = []
         name_server = self._get_primary_name_server(zone_name)
         for tlsa_data in tlsa_records:
@@ -643,9 +645,9 @@ class AcmeManager(object):
         return None
 
     def _public_key_digest(self, private_key, digest='sha256'):
-         if ('sha256' == digest):
-             return hashlib.sha256(self._public_key_bytes(private_key)).digest()
-         return hashlib.sha512(self._public_key_bytes(private_key)).digest()
+        if ('sha256' == digest):
+            return hashlib.sha256(self._public_key_bytes(private_key)).digest()
+        return hashlib.sha512(self._public_key_bytes(private_key)).digest()
 
     def _certificate_bytes(self, certificate):
         if (certificate):
@@ -691,7 +693,7 @@ class AcmeManager(object):
         return self._public_key_bytes(private_key) == self._certificate_public_key_bytes(certificate)
 
     def _certificate_digest(self, certificate, digest='sha256'):
-        return certificate.wrapped.digest(digest).decode('ascii').replace(':','').lower()
+        return certificate.wrapped.digest(digest).decode('ascii').replace(':', '').lower()
 
     def load_certificate(self, file_type, file_name, key_type):
         try:
@@ -844,7 +846,7 @@ class AcmeManager(object):
                         self.config[section_name][key] = value
 
         private_keys = self.config.get('private_keys', collections.OrderedDict())
-        if ('certificates' in self.config): # convert bare certificate definitions to private key definitions
+        if ('certificates' in self.config):     # convert bare certificate definitions to private key definitions
             certificates = self.config['certificates']
             for certificate_name in certificates:
                 if (certificate_name not in private_keys):
@@ -895,7 +897,7 @@ class AcmeManager(object):
 
         try:
             user_agent = '{script}/{version} acme-python/{acme_version}'.format(script=self.script_name, version=self.script_version,
-                             acme_version=pkg_resources.get_distribution('acme').version)
+                                                                                acme_version=pkg_resources.get_distribution('acme').version)
             network = client.ClientNetwork(self.client_key, user_agent=user_agent)
             self.acme_client = client.Client(self._setting('acme_directory_url'), self.client_key, net=network)
         except Exception as error:
@@ -994,7 +996,7 @@ class AcmeManager(object):
                 else:
                     try:
                         with self._open_file(self._file_path('challenge', zone_name), 'w', 0o644) as challenge_file:
-                            json.dump(zone_responses, challenge_file);
+                            json.dump(zone_responses, challenge_file)
                         challenge_dns_responses[zone_name] = zone_responses
                     except Exception as error:
                         self._warn('Unable to create acme-challenge file for zone ', zone_name, '\n', error, '\n')
@@ -1008,7 +1010,7 @@ class AcmeManager(object):
             self._note('Got name servers ', name_servers, ' for ', zone_name, '\n')
             for name_server in name_servers:
                 waiting += [DNSTuple(datetime.datetime.now(), name_server, domain_name, challenge_dns_responses[zone_name][domain_name], 0)
-                                for domain_name in challenge_dns_responses[zone_name]]
+                            for domain_name in challenge_dns_responses[zone_name]]
         while waiting:
             when, name_server, domain_name, response, attempt_count = heapq.heappop(waiting)
             now = datetime.datetime.now()
@@ -1141,13 +1143,13 @@ class AcmeManager(object):
 
             rollover = False
             if (self.args.rollover
-                 or (self._option(private_keys[private_key_name], 'auto_rollover')
-                     and self._time_to_rollover(oldest_key_timestamp, expiration_days))):
+                or (self._option(private_keys[private_key_name], 'auto_rollover')
+                    and self._time_to_rollover(oldest_key_timestamp, expiration_days))):
                 if (self.args.force_rollover or self._safe_to_rollover(youngest_key_timestamp, hpkp_days)):
                     rollover = True
                 else:
                     self._warn('Backup private key for ', private_key_name, ' is younger than HPKP duration, rollover skipped\n',
-                                'Use "--force" to force key rollover, note that this can brick a web site if HPKP is deployed\n')
+                               'Use "--force" to force key rollover, note that this can brick a web site if HPKP is deployed\n')
 
             if (rollover):
                 keys = {key_type: KeyData(None, None) for key_type in key_options}
@@ -1162,8 +1164,9 @@ class AcmeManager(object):
             if (rolled_private_key):
                 self._status('Private key rolled over for ', private_key_name, '\n')
 
-            if (self._time_to_rollover(oldest_key_timestamp, expiration_days) and private_key
-                and not rolled_private_key and self._safe_to_rollover(youngest_key_timestamp, hpkp_days)):
+            if (not rolled_private_key
+                    and self._time_to_rollover(oldest_key_timestamp, expiration_days)
+                    and self._safe_to_rollover(youngest_key_timestamp, hpkp_days)):
                 self._status('Backup key for ', private_key_name, ' has expired. Use "--rollover" to replace.\n')
 
             for key_type, options in key_options.items():
@@ -1207,7 +1210,7 @@ class AcmeManager(object):
                         if (existing_certificate):
                             certificate_common_name = existing_certificate.get_subject().commonName
                             if (common_name != certificate_common_name):
-                                self._status('Common name changed for ', certificate_name, ' from ', certificate_common_name, ' to ', common_name, '\n')
+                                self._status('Common name changed for ', key_type, ' certificate ', certificate_name, ' from ', certificate_common_name, ' to ', common_name, '\n')
                             else:
                                 certificate_alt_names = self.get_alt_names(existing_certificate)
                                 new_alt_names = set(alt_names)
@@ -1215,24 +1218,24 @@ class AcmeManager(object):
                                 if (new_alt_names != existing_alt_names):
                                     added_alt_names = new_alt_names - existing_alt_names
                                     removed_alt_names = existing_alt_names - new_alt_names
-                                    self._status('Alt names changed for ', certificate_name,
+                                    self._status('Alt names changed for ', key_type, ' certificate ', certificate_name,
                                                  (', adding ' + ', '.join([alt_name for alt_name in alt_names if (alt_name in added_alt_names)])) if added_alt_names else '',
                                                  (', removing ' + ', '.join([alt_name for alt_name in certificate_alt_names if (alt_name in removed_alt_names)])) if removed_alt_names else '',
                                                  '\n')
                                 else:
                                     if (not self._private_key_matches_certificate(keys[key_type].key, existing_certificate)):
-                                        self._status('Certificate ', certificate_name, ' public key does not match private key\n')
+                                        self._status(key_type.capitalize(), ' certificate ', certificate_name, ' public key does not match private key\n')
                                         changed_private_key = True
                                     else:
                                         valid_duration = self._datetime_from_asn1_generaltime(existing_certificate.get_notAfter()) - datetime.datetime.now()
                                         if (valid_duration.days < 0):
-                                            self._status('Existing certificate ', certificate_name, ' has expired\n')
+                                            self._status(key_type.capitalize(), ' certificate ', certificate_name, ' has expired\n')
                                         elif (valid_duration.days < self._setting('renewal_days')):
-                                            self._status('Existing certificate ', certificate_name, ' will expire in ',
+                                            self._status(key_type.capitalize(), ' certificate ', certificate_name, ' will expire in ',
                                                          (str(valid_duration.days) + ' days') if (valid_duration.days) else 'less than a day',
                                                          '\n')
                                         else:
-                                            self._debug('Certificate valid beyond renewal window\n')
+                                            self._debug(key_type.capitalize(), ' certificate valid beyond renewal window\n')
                                             continue
 
                     csr = self.generate_csr(keys[key_type].key, common_name, alt_names,
@@ -1242,20 +1245,19 @@ class AcmeManager(object):
                         certificate_resource = self.acme_client.request_issuance(jose.ComparableX509(csr),
                                                                                  [self.authorizations[domain_name] for domain_name in alt_names])
                     except Exception as error:
-                        self._warn('Certificate issuance failed\n', error, '\n')
+                        self._warn(key_type.capitalize(), ' certificate issuance failed\n', error, '\n')
                         if (rolled_private_key):
                             issued_certificates = []    # do not partially install new certificates if private key changed
                             break
                         continue
 
-                    self._debug('New certificate issued\n')
+                    self._debug('New ', key_type, ' certificate issued\n')
                     chain = self.acme_client.fetch_chain(certificate_resource)
                     issued_certificates.append(CertificateData(certificate_name, key_type, certificate_resource.body, chain, key_certificates[certificate_name]))
 
             if (issued_certificates):
                 processed_keys.append(PrivateKeyData(private_key_name, key_options, keys, backup_keys,
                                                      generated_private_key, rolled_private_key, changed_private_key, issued_certificates))
-
 
         # install keys and certificates
         root_certificates = self.load_root_certificates()
@@ -1335,7 +1337,7 @@ class AcmeManager(object):
                     self._status('Private keys for ', private_key_name, ' installed\n')
                 for certificate_data in private_key_data.issued_certificates:
                     certificate_name = certificate_data.certificate_name
-                    self._status('Certificate ', certificate_name, ' (', certificate_data.key_type, ') installed\n')
+                    self._status(certificate_data.key_type.capitalize(), ' certificate ', certificate_name, ' installed\n')
                     updated_services.update(self._get_list(certificate_data.config, 'services'))
                     if (not self._setting('slave_mode')):
                         for zone_name in certificate_data.config['alt_names']:
@@ -1373,11 +1375,11 @@ class AcmeManager(object):
                             try:
                                 self.acme_client.revoke(certificate)
                                 revoked_certificates.append((certificate_name, key_type))
-                                self._status('Certificate ', certificate_name, ' (', key_type, ') revoked\n')
+                                self._status(key_type.capitalize(), ' certificate ', certificate_name, ' revoked\n')
                             except Exception as error:
-                                self._warn('Unable to revoke certificate ', certificate_name, ' (', key_type, ')\n', error, '\n')
+                                self._warn('Unable to revoke ', key_type, ' certificate ', certificate_name, '\n', error, '\n')
                         else:
-                            self._warn('Certificate ', certificate_name, ' (', key_type, ') not found\n')
+                            self._warn(key_type.capitalize(), ' certificate ', certificate_name, ' not found\n')
 
                 archive_date = datetime.datetime.now()
                 processed_tlsa = set()
@@ -1496,21 +1498,20 @@ class AcmeManager(object):
             os.remove(pid_file_path)
 
 
-
 def debug_hook(type, value, tb):
-   if hasattr(sys, 'ps1') or not sys.stderr.isatty():
-      # we are in interactive mode or we don't have a tty-like
-      # device, so we call the default hook
-      sys.__excepthook__(type, value, tb)
-   else:
-      import traceback, pdb
-      # we are NOT in interactive mode, print the exception...
-      traceback.print_exception(type, value, tb)
-      print()
-      # ...then start the debugger in post-mortem mode.
-      pdb.pm()
+    if hasattr(sys, 'ps1') or not sys.stderr.isatty():
+        # we are in interactive mode or we don't have a tty-like
+        # device, so we call the default hook
+        sys.__excepthook__(type, value, tb)
+    else:
+        import traceback
+        import pdb
+        # we are NOT in interactive mode, print the exception...
+        traceback.print_exception(type, value, tb)
+        print()
+        # ...then start the debugger in post-mortem mode.
+        pdb.pm()
 
 
 if __name__ == '__main__':      # called from the command line
     AcmeManager.Run()
-
