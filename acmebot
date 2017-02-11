@@ -23,6 +23,8 @@ import hashlib
 import base64
 import pkg_resources
 import binascii
+import struct
+import urllib
 
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import rsa, ec
@@ -30,15 +32,15 @@ from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat,
 
 import OpenSSL
 
-from acme import client
-from acme import messages
-from acme import jose
+from acme import client, messages, jose
 
 import DNS
+
 
 DNSTuple = collections.namedtuple('DNSTuple', ['datetime', 'name_server', 'domain_name', 'response', 'attempt_count'])
 AuthorizationTuple = collections.namedtuple('AuthorizationTuple', ['datetime', 'authorization_resource'])
 KeyData = collections.namedtuple('KeyData', ['key', 'timestamp'])
+SCTData = collections.namedtuple('SCTData', ['version', 'id', 'timestamp', 'extensions', 'signature'])
 PrivateKeyData = collections.namedtuple('PrivateKeyData', ['name', 'key_options', 'keys', 'backup_keys',
                                                            'generated_key', 'rolled_key', 'changed_key', 'issued_certificates'])
 CertificateData = collections.namedtuple('CertificateData', ['certificate_name', 'key_type', 'certificate', 'chain', 'config'])
@@ -53,13 +55,13 @@ class AcmeError(Exception):
 class FileTransaction(object):
     __slots__ = ['file', 'temp_file_path', 'file_type', 'file_path', 'chmod', 'timestamp']
 
-    def __init__(self, file_type, file_path, chmod=None, timestamp=None):
+    def __init__(self, file_type, file_path, chmod=None, timestamp=None, mode='w'):
         self.file_type = file_type
         self.file_path = file_path
         self.chmod = chmod
         self.timestamp = timestamp
         temp_file_descriptor, self.temp_file_path = tempfile.mkstemp()
-        self.file = open(temp_file_descriptor, 'w')
+        self.file = open(temp_file_descriptor, mode)
 
     def __del__(self):
         if (self.file):
@@ -90,7 +92,7 @@ class AcmeManager(object):
     def __init__(self):
         self.script_dir = os.path.dirname(os.path.realpath(__file__))
         self.script_name = os.path.basename(__file__)
-        self.script_version = '1.2'
+        self.script_version = '1.3'
 
         argparser = argparse.ArgumentParser(description='ACME Certificate Manager')
         argparser.add_argument('--version', action='version', version='%(prog)s ' + self.script_version)
@@ -125,12 +127,16 @@ class AcmeManager(object):
         argparser.add_argument('-t', '--tlsa',
                                action='store_true', dest='tlsa', default=False,
                                help='Update TLSA records only')
+        argparser.add_argument('-s', '--sct',
+                               action='store_true', dest='sct', default=False,
+                               help='Update Signed Certificate Timestamps only')
         self.args = argparser.parse_args()
 
         if (self.args.debug):
             sys.excepthook = debug_hook
 
         self.authorizations = {}
+        self.updated_services = set()
 
         self.config, self.config_file_path = self._load_config(self.args.config_path, ('.', os.path.join('/etc', self.script_name), self.script_dir))
         self._key_types = ('rsa', 'ecdsa')
@@ -148,6 +154,7 @@ class AcmeManager(object):
                 'pin_subdomains': True,
                 'hpkp_report_uri': None,
                 'ocsp_must_staple': False,
+                'ct_submit_logs': ['google_icarus'],
                 'renewal_days': 30,
                 'expiration_days': 730,
                 'auto_rollover': False,
@@ -172,6 +179,7 @@ class AcmeManager(object):
                 'param': '/etc/ssl/params',
                 'challenge': '/etc/ssl/challenges',
                 'hpkp': '/etc/ssl/hpkp',
+                'sct': '/etc/ssl/scts/{name}/{key_type}',
                 'update_key': '/etc/ssl/update_keys',
                 'archive': '/etc/ssl/archive'
             },
@@ -189,7 +197,8 @@ class AcmeManager(object):
                 'chain': '{name}_chain{suffix}.pem',
                 'param': '{name}_param.pem',
                 'challenge': '{name}',
-                'hpkp': '{name}.{server}'
+                'hpkp': '{name}.{server}',
+                'sct': '{ct_log_name}.sct'
             },
             'hpkp_headers': {
                 'apache': 'Header always set Public-Key-Pins "{header}"\n',
@@ -207,6 +216,52 @@ class AcmeManager(object):
                 'prosody': 'systemctl restart prosody',
                 'synapse': 'systemctl restart matrix-synapse',
                 'znc': 'systemctl restart znc'
+            },
+            'ct_logs': {
+                'google_pilot': {
+                    'url': 'https://ct.googleapis.com/pilot',
+                    'id': 'pLkJkLQYWBSHuxOizGdwCjw1mAT5G9+443fNDsgN3BA='
+                },
+                'google_icarus': {
+                    'url': 'https://ct.googleapis.com/icarus',
+                    'id': 'KTxRllTIOWW6qlD8WAfUt2+/WHopctykwwz05UVH9Hg='
+                },
+                'google_rocketeer': {
+                    'url': 'https://ct.googleapis.com/rocketeer',
+                    'id': '7ku9t3XOYLrhQmkfq+GeZqMPfl+wctiDAMR7iXqo/cs='
+                },
+                'google_skydiver': {
+                    'url': 'https://ct.googleapis.com/skydiver',
+                    'id': 'u9nfvB+KcbWTlCOXqpJ7RzhXlQqrUugakJZkNo4e0YU='
+                },
+                'digicert': {
+                    'url': 'https://ct1.digicert-ct.com/log',
+                    'id': 'VhQGmi/XwuzT9eG9RLI+x0Z2ubyZEVzA75SYVdaJ0N0='
+                },
+                'symantec_ct': {
+                    'url': 'https://ct.ws.symantec.com',
+                    'id': '3esdK3oNT6Ygi4GtgWhwfi6OnQHVXIiNPRHEzbbsvsw='
+                },
+                'symantec_vega': {
+                    'url': 'https://vega.ws.symantec.com',
+                    'id': 'vHjh38X2PGhGSTNNoQ+hXwl5aSAJwIG08/aRfz7ZuKU='
+                },
+                'venafi': {
+                    'url': 'https://ctlog.api.venafi.com',
+                    'id': 'rDua7X+pZ0dXFZ5tfVdWcvnZgQCUHpve/+yhMTt1eC0='
+                },
+                'wosign': {
+                    'url': 'https://ctlog.wosign.com',
+                    'id': 'QbLcLonmPOSvG6e7Kb9oxt7m+fHMBH4w3/rjs7olkmM='
+                },
+                'cnnic': {
+                    'url': 'https://ctserver.cnnic.cn',
+                    'id': 'pXesnO11SN2PAltnokEInfhuD0duwgPC7L7bGF8oJjg='
+                },
+                'startssl': {
+                    'url': 'https://ct.startssl.com',
+                    'id': 'NLtq1sPfnAPuqKSZ/3iRSGydXlysktAfe/0bzhnbSO8='
+                }
             }
         }
 
@@ -259,7 +314,7 @@ class AcmeManager(object):
         raise AcmeError(message)
 
     def _log(self, *args):
-        if (self._directory('log') and self._file_name('log') and self._setting('log_level')):
+        if (hasattr(self, 'config') and self._directory('log') and self._file_name('log') and self._setting('log_level')):
             with self._open_file(self._file_path('log', self.script_name), 'a+', 0o640) as log_file:
                 log_file.write(self._message(*args))
 
@@ -303,13 +358,13 @@ class AcmeManager(object):
     def _get_user_id(self, user_name):
         try:
             return pwd.getpwnam(user_name).pw_uid
-        except:
+        except Exception:
             return -1
 
     def _get_group_id(self, group_name):
         try:
             return grp.getgrnam(group_name).gr_gid
-        except:
+        except Exception:
             return -1
 
     def _rename_file(self, old_file_path, new_file_path, chmod=None, timestamp=None):
@@ -358,7 +413,7 @@ class AcmeManager(object):
 
     def _get_list(self, config, key, default=[]):
         value = config.get(key, default)
-        return value if (isinstance(value, collections.Iterable) and not isinstance(value, str)) else [value]
+        return value if (isinstance(value, collections.Iterable) and not isinstance(value, str)) else [] if (value is None) else [value]
 
     def _config(self, section_name, key=None, default=None):
         return self.config.get(section_name, {}).get(key, default) if (key) else self.config.get(section_name, {})
@@ -401,6 +456,10 @@ class AcmeManager(object):
 
     def _option(self, config, key):
         return config.get(key, self._setting(key))
+
+    def _option_list(self, config, key):
+        value = config.get(key, self._setting(key))
+        return value if (isinstance(value, collections.Iterable) and not isinstance(value, str)) else [] if (value is None) else [value]
 
     def _datetime_from_asn1_generaltime(self, general_time):
         try:
@@ -562,18 +621,22 @@ class AcmeManager(object):
             updates.append('update delete _{port}._{proto}.{host}. TLSA'.format(port=tlsa_data.port, proto=tlsa_data.protocol, host=host_name))
         self._update_zone(updates, zone_name, zone_key, 'Remove TLSA')
 
-    def _reload_service(self, service_name):
-        service_command = self._service(service_name)
-        if (service_command):
-            self._debug('Reloading service ', service_name, '\n')
-            try:
-                output = subprocess.check_output(service_command, shell=True, stderr=subprocess.STDOUT)
-                if (output):
-                    self._warn('Service ', service_name, ' responded to reload with:\n', output, '\n')
-            except subprocess.CalledProcessError as error:
-                self._warn('Service ', service_name, ' reload failed, code: ', error.returncode, '\n', error.output, '\n')
-        else:
-            self._warn('Service ', service_name, ' does not have registered reload command\n')
+    def update_services(self, services):
+        self.updated_services.update(services)
+
+    def reload_services(self):
+        for service_name in self.updated_services:
+            service_command = self._service(service_name)
+            if (service_command):
+                self._debug('Reloading service ', service_name, '\n')
+                try:
+                    output = subprocess.check_output(service_command, shell=True, stderr=subprocess.STDOUT)
+                    if (output):
+                        self._warn('Service ', service_name, ' responded to reload with:\n', output, '\n')
+                except subprocess.CalledProcessError as error:
+                    self._warn('Service ', service_name, ' reload failed, code: ', error.returncode, '\n', error.output, '\n')
+            else:
+                self._warn('Service ', service_name, ' does not have registered reload command\n')
 
     def generate_rsa_key(self, key_size):
         key = OpenSSL.crypto.PKey()
@@ -607,12 +670,13 @@ class AcmeManager(object):
         try:
             key_file_path = self._file_path(file_type, file_name, key_type)
             with open(key_file_path, 'r') as private_key_file:
-                return KeyData(OpenSSL.crypto.load_privatekey(OpenSSL.crypto.FILETYPE_PEM, private_key_file.read().encode('ascii')), os.stat(key_file_path).st_mtime)
-        except:
+                return KeyData(OpenSSL.crypto.load_privatekey(OpenSSL.crypto.FILETYPE_PEM, private_key_file.read().encode('ascii')),
+                               os.stat(key_file_path).st_mtime)
+        except Exception:
             return KeyData(None, None)
 
     def save_private_key(self, file_type, file_name, key_type, private_key, timestamp=None, certificate=None, chain=[], dhparam_pem=None, ecparam_pem=None):
-        with FileTransaction(file_type, self._file_path(file_type, file_name, key_type), 0o640, timestamp) as transaction:
+        with FileTransaction(file_type, self._file_path(file_type, file_name, key_type), chmod=0o640, timestamp=timestamp) as transaction:
             if (private_key):
                 transaction.write(OpenSSL.crypto.dump_privatekey(OpenSSL.crypto.FILETYPE_PEM, private_key).decode('ascii'))
                 if (certificate):
@@ -625,14 +689,14 @@ class AcmeManager(object):
 
     def _time_to_rollover(self, backup_key_timestamp, expiration_days):
         if (backup_key_timestamp and expiration_days):
-            backup_key_modified_time = datetime.datetime.fromtimestamp(backup_key_timestamp)
-            return (expiration_days < (datetime.datetime.now() - backup_key_modified_time).days)
+            backup_key_modified_time = datetime.datetime.utcfromtimestamp(backup_key_timestamp)
+            return (expiration_days < (datetime.datetime.utcnow() - backup_key_modified_time).days)
         return False
 
     def _safe_to_rollover(self, backup_key_timestamp, hpkp_days):
         if (backup_key_timestamp and hpkp_days):
-            backup_key_modified_time = datetime.datetime.fromtimestamp(backup_key_timestamp)
-            return (hpkp_days < (datetime.datetime.now() - backup_key_modified_time).days)
+            backup_key_modified_time = datetime.datetime.utcfromtimestamp(backup_key_timestamp)
+            return (hpkp_days < (datetime.datetime.utcnow() - backup_key_modified_time).days)
         return True
 
     def _public_key_bytes(self, private_key):
@@ -686,7 +750,7 @@ class AcmeManager(object):
         server_headers = self._generate_hpkp_headers(file_name, private_keys, hpkp_days, pin_subdomains, report_uri)
         transactions = []
         for server, header in server_headers.items():
-            with FileTransaction('hpkp', self._file_path('hpkp', file_name, server=server), 0o644) as transaction:
+            with FileTransaction('hpkp', self._file_path('hpkp', file_name, server=server), chmod=0o644) as transaction:
                 transaction.write(header)
                 transactions.append(transaction)
         return transactions
@@ -713,7 +777,7 @@ class AcmeManager(object):
         try:
             with open(self._file_path(file_type, file_name, key_type), 'r') as certificate_file:
                 return jose.ComparableX509(OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, certificate_file.read().encode('ascii')))
-        except:
+        except Exception:
             return None
 
     def load_root_certificates(self):
@@ -723,8 +787,9 @@ class AcmeManager(object):
         return root_certificates
 
     def save_certificate(self, file_type, file_name, key_type, certificate, chain=[], root_certificate=None, dhparam_pem=None, ecparam_pem=None):
-        with FileTransaction(file_type, self._file_path(file_type, file_name, key_type), 0o644) as transaction:
-            self._save_certificate(transaction.file, certificate, chain=chain, root_certificate=root_certificate, dhparam_pem=dhparam_pem, ecparam_pem=ecparam_pem)
+        with FileTransaction(file_type, self._file_path(file_type, file_name, key_type), chmod=0o644) as transaction:
+            self._save_certificate(transaction.file, certificate, chain=chain, root_certificate=root_certificate,
+                                   dhparam_pem=dhparam_pem, ecparam_pem=ecparam_pem)
         return transaction
 
     def archive_certificate(self, file_type, file_name, key_type, archive_name='', archive_date=None):
@@ -749,24 +814,26 @@ class AcmeManager(object):
     def load_chain(self, file_name, key_type):
         chain = []
         try:
-            chain_file_path = self._file_path('chain', file_name, key_type)
-            if (os.path.isfile(chain_file_path)):
-                with open(chain_file_path) as chain_file:
-                    pem_data = chain_file.read()
-                    index = 0
-            else:
+            pem_data = None
+            if (self._directory('chain')):
+                chain_file_path = self._file_path('chain', file_name, key_type)
+                if (os.path.isfile(chain_file_path)):
+                    with open(chain_file_path) as chain_file:
+                        pem_data = chain_file.read()
+                        index = 0
+            if (not pem_data):
                 with open(self._file_path('certificate', file_name, key_type)) as certificate_file:
                     pem_data = certificate_file.read()
                     index = 1
             certificate_pems = re.findall('-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----', pem_data, re.DOTALL)[index:]
             for certificate_pem in certificate_pems:
                 chain.append(jose.ComparableX509(OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, certificate_pem.encode('ascii'))))
-        except:
+        except Exception:
             pass
         return chain
 
     def save_chain(self, file_name, key_type, chain):
-        with FileTransaction('chain', self._file_path('chain', file_name, key_type), 0o644) as transaction:
+        with FileTransaction('chain', self._file_path('chain', file_name, key_type), chmod=0o644) as transaction:
             self._save_chain(transaction.file, chain)
         return transaction
 
@@ -781,27 +848,33 @@ class AcmeManager(object):
             lead_in = '\n'
 
     def generate_dhparam(self, dhparam_size):
-        try:
-            return subprocess.check_output(['openssl', 'dhparam', str(dhparam_size)], stderr=subprocess.DEVNULL).decode('ascii') if (dhparam_size) else None
-        except:
-            return None
+        if (dhparam_size):
+            try:
+                return subprocess.check_output(['openssl', 'dhparam', str(dhparam_size)], stderr=subprocess.DEVNULL).decode('ascii')
+            except Exception:
+                pass
+        return None
 
     def generate_ecparam(self, ecparam_curve):
-        try:
-            return subprocess.check_output(['openssl', 'ecparam', '-name', ecparam_curve], stderr=subprocess.DEVNULL).decode('ascii') if (ecparam_curve) else None
-        except:
-            return None
+        if (ecparam_curve):
+            try:
+                return subprocess.check_output(['openssl', 'ecparam', '-name', ecparam_curve], stderr=subprocess.DEVNULL).decode('ascii')
+            except Exception:
+                pass
+        return None
 
     def params_present(self, file_name):
         return os.path.isfile(self._file_path('param', file_name))
 
     def load_params(self, file_name):
         try:
-            param_file_path = self._file_path('param', file_name)
-            if (os.path.isfile(param_file_path)):
-                with open(param_file_path) as param_file:
-                    pem_data = param_file.read()
-            else:
+            pem_data = None
+            if (self._directory('param')):
+                param_file_path = self._file_path('param', file_name)
+                if (os.path.isfile(param_file_path)):
+                    with open(param_file_path) as param_file:
+                        pem_data = param_file.read()
+            if (not pem_data):
                 for key_type in self._key_types:
                     certificate_file_path = self._file_path('certificate', file_name, key_type)
                     if (os.path.isfile(certificate_file_path)):
@@ -814,12 +887,12 @@ class AcmeManager(object):
                 match = re.match(r'.*(-----BEGIN EC PARAMETERS-----.*-----END EC PARAMETERS-----)', pem_data, re.DOTALL)
                 ecparam_pem = (match.group(1) + '\n') if (match) else None
                 return (dhparam_pem, ecparam_pem)
-        except:
+        except Exception:
             pass
         return (None, None)
 
     def save_params(self, file_name, dhparam_pem, ecparam_pem):
-        with FileTransaction('param', self._file_path('param', file_name), 0o640) as transaction:
+        with FileTransaction('param', self._file_path('param', file_name), chmod=0o640) as transaction:
             if (dhparam_pem and ecparam_pem):
                 transaction.write(dhparam_pem + '\n' + ecparam_pem)
             else:
@@ -828,6 +901,66 @@ class AcmeManager(object):
 
     def archive_params(self, file_name, archive_name='', archive_date=None):
         self._archive_file('param', self._file_path('param', file_name), archive_name=archive_name, archive_date=archive_date)
+
+    def _sct_datetime(self, sct_timestamp):
+        return datetime.datetime.utcfromtimestamp(sct_timestamp / 1000)
+
+    def fetch_sct(self, ct_log_name, certificate, chain):
+        ct_log = self._config('ct_logs', ct_log_name)
+        if (ct_log and ('url' in ct_log)):
+            certificates = ([base64.b64encode(self._certificate_bytes(certificate)).decode('ascii')]
+                            + [base64.b64encode(self._certificate_bytes(chain_certificate)).decode('ascii') for chain_certificate in chain])
+            request_data = json.dumps({'chain': certificates}).encode('ascii')
+            request = urllib.request.Request(url=ct_log['url'] + '/ct/v1/add-chain', data=request_data)
+            request.add_header('Content-Type', 'application/json')
+            try:
+                with urllib.request.urlopen(request) as response:
+                    sct = json.loads(response.read().decode('utf-8'))
+                    return SCTData(sct.get('sct_version'), sct.get('id'), sct.get('timestamp'), sct.get('extensions'), sct.get('signature'))
+            except urllib.error.HTTPError as error:
+                if ((400 <= error.code) and (error.code < 500)):
+                    self._warn('Unable to retrieve SCT from log ', ct_log_name, ' HTTP error: ', error.code, ' ', error.reason, '\n', error.read(), '\n')
+                else:
+                    self._warn('Unable to retrieve SCT from log ', ct_log_name, ' HTTP error: ', error.code, ' ', error.reason, '\n')
+            except urllib.error.URLError as error:
+                self._warn('Unable to retrieve SCT from log ', ct_log_name, ' ', error.reason, '\n')
+        else:
+            self._warn('Unknown CT log: ', ct_log_name, '\n')
+        return None
+
+    def load_sct(self, file_name, key_type, ct_log_name):
+        try:
+            ct_log = self._config('ct_logs', ct_log_name)
+            if (ct_log and ('id' in ct_log)):
+                sct_file_path = self._file_path('sct', file_name, key_type, ct_log_name=ct_log_name)
+                with open(sct_file_path, 'rb') as sct_file:
+                    sct = sct_file.read()
+                    version, id, timestamp, extensions_len = struct.unpack('>b32sQH', sct[:43])
+                    id = base64.b64encode(id).decode('ascii')
+                    extensions = base64.b64encode(sct[43:(43 + extensions_len)]).decode('ascii') if (extensions_len) else ''
+                    signature = base64.b64encode(sct[43 + extensions_len:]).decode('ascii')
+
+                    if (ct_log['id'] == id):
+                        return SCTData(version, id, timestamp, extensions, signature)
+                    else:
+                        self._note('SCT ', sct_file_path, ' does not match log id for ', ct_log_name, '\n')
+        except Exception:
+            pass
+        return None
+
+    def save_sct(self, file_name, key_type, ct_log_name, sct_data):
+        ct_log = self._config('ct_logs', ct_log_name)
+        if (ct_log):
+            with FileTransaction('sct', self._file_path('sct', file_name, key_type, ct_log_name=ct_log_name), chmod=0o640, mode='wb') as transaction:
+                extensions = base64.b64decode(sct_data.extensions)
+                sct = struct.pack('>b32sQH', sct_data.version, base64.b64decode(sct_data.id), sct_data.timestamp, len(extensions))
+                sct += extensions + base64.b64decode(sct_data.signature)
+                transaction.write(sct)
+            return transaction
+        return None
+
+    def archive_sct(self, file_name, key_type, ct_log_name, archive_name='', archive_date=None):
+        self._archive_file('sct', self._file_path('sct', file_name, key_type, ct_log_name=ct_log_name), archive_name=archive_name, archive_date=archive_date)
 
     def generate_csr(self, private_key, common_name, alt_names=[], must_staple=False):
         req = OpenSSL.crypto.X509Req()
@@ -868,7 +1001,8 @@ class AcmeManager(object):
                 if ('certificates' not in private_keys[certificate_name]):
                     private_keys[certificate_name]['certificates'] = collections.OrderedDict()
                 if (certificate_name not in private_keys[certificate_name]['certificates']):
-                    for config_key in ('key_types', 'key_size', 'key_curve', 'expiration_days', 'auto_rollover', 'hpkp_days', 'pin_subdomains', 'hpkp_report_uri'):
+                    for config_key in ('key_types', 'key_size', 'key_curve', 'expiration_days', 'auto_rollover',
+                                       'hpkp_days', 'pin_subdomains', 'hpkp_report_uri'):
                         if ((config_key in certificates[certificate_name]) and (config_key not in private_keys[certificate_name])):
                             private_keys[certificate_name][config_key] = certificates[certificate_name][config_key]
                             del certificates[certificate_name][config_key]
@@ -930,7 +1064,7 @@ class AcmeManager(object):
             self._note('Auto-accepting TOS: ', self.registration.terms_of_service, '\n')
             self.acme_client.agree_to_tos(self.registration)
             self.registration = self.acme_client.query_registration(self.registration)   # get agreement info
-        with FileTransaction('registration', registration_path, 0o600) as transaction:
+        with FileTransaction('registration', registration_path, chmod=0o600) as transaction:
             transaction.write(self.registration.json_dumps())
             self._note('Saved registration ', registration_path, '\n')
         self._commit_file_transactions([transaction], archive_name=None)
@@ -1124,7 +1258,6 @@ class AcmeManager(object):
     def process_certificates(self, private_key_names=[]):
         private_keys = self._config('private_keys')
         updated_key_zones = set()
-        updated_services = set()
         processed_keys = []
 
         for private_key_name in private_keys:
@@ -1206,7 +1339,8 @@ class AcmeManager(object):
 
                 missing_authorizations = [alt_name for alt_name in alt_names if (alt_name not in self.authorizations)]
                 if (missing_authorizations):
-                    self._status('Unable to issue certificate ', certificate_name, ' due to missing authorization(s) for: ', ', '.join(missing_authorizations), '\n')
+                    self._status('Unable to issue certificate ', certificate_name, ' due to missing authorization(s) for: ',
+                                 ', '.join(missing_authorizations), '\n')
                     if (rolled_private_key):
                         issued_certificates = []    # do not partially install new certificates if private key changed
                         break
@@ -1244,7 +1378,7 @@ class AcmeManager(object):
                                         self._status(key_type.upper(), ' certificate ', certificate_name, ' public key does not match private key\n')
                                         changed_private_key = True
                                     else:
-                                        valid_duration = self._datetime_from_asn1_generaltime(existing_certificate.get_notAfter()) - datetime.datetime.now()
+                                        valid_duration = self._datetime_from_asn1_generaltime(existing_certificate.get_notAfter()) - datetime.datetime.utcnow()
                                         if (valid_duration.days < 0):
                                             self._status(key_type.upper(), ' certificate ', certificate_name, ' has expired\n')
                                         elif (valid_duration.days < self._setting('renewal_days')):
@@ -1271,7 +1405,8 @@ class AcmeManager(object):
 
                     self._debug('New ', key_type.upper(), ' certificate issued\n')
                     chain = self.acme_client.fetch_chain(certificate_resource)
-                    issued_certificates.append(CertificateData(certificate_name, key_type, certificate_resource.body, chain, key_certificates[certificate_name]))
+                    issued_certificates.append(CertificateData(certificate_name, key_type, certificate_resource.body, chain,
+                                                               key_certificates[certificate_name]))
 
             processed_keys.append(PrivateKeyData(private_key_name, key_options, keys, backup_keys,
                                                  generated_private_key, rolled_private_key, changed_private_key, issued_certificates))
@@ -1300,17 +1435,20 @@ class AcmeManager(object):
                     transactions.append(self.save_private_key('backup_key', private_key_name, key_type,
                                                               backup_keys[key_type].key, timestamp=backup_keys[key_type].timestamp))
 
+            generated_hpkp_headers = False
             hpkp_days = self._option(private_keys[private_key_name], 'hpkp_days')
             if (0 < hpkp_days) and (self._directory('hpkp')):
                 pin_subdomains = self._option(private_keys[private_key_name], 'pin_subdomains')
                 hpkp_report_uri = self._option(private_keys[private_key_name], 'hpkp_report_uri')
                 keys = ([private_key_data.keys[key_type].key for key_type in private_key_data.key_options if private_key_data.keys[key_type].key]
-                        + [private_key_data.backup_keys[key_type].key for key_type in private_key_data.key_options if private_key_data.backup_keys[key_type].key])
+                        + [private_key_data.backup_keys[key_type].key for key_type in private_key_data.key_options
+                           if private_key_data.backup_keys[key_type].key])
                 if ((1 < len(keys))
                         and (private_key_data.generated_key or private_key_data.changed_key or generated_backup_key
                              or not self.hpkp_headers_present(private_key_name, keys, hpkp_days, pin_subdomains, hpkp_report_uri))):
                     self._status('Generating HPKP headers for ', private_key_name, '\n')
                     transactions += self.save_hpkp_headers(private_key_name, keys, hpkp_days, pin_subdomains, hpkp_report_uri)
+                    generated_hpkp_headers = True
 
             processed_params = set()
             for certificate_data in private_key_data.issued_certificates:
@@ -1357,18 +1495,21 @@ class AcmeManager(object):
                 for certificate_data in private_key_data.issued_certificates:
                     certificate_name = certificate_data.certificate_name
                     self._status(certificate_data.key_type.upper(), ' certificate ', certificate_name, ' installed\n')
-                    updated_services.update(self._get_list(certificate_data.config, 'services'))
+                    self.update_services(self._get_list(certificate_data.config, 'services'))
                     if (not self._setting('slave_mode')):
                         for zone_name in certificate_data.config['alt_names']:
                             if (not self._zone_key(zone_name)):
                                 updated_key_zones.add(zone_name)
+                if (generated_backup_key or generated_hpkp_headers):    # reload services for all certificates
+                    key_certificates = private_keys[private_key_name].get('certificates', {})
+                    for certificate_name in key_certificates:
+                        self.update_services(self._get_list(key_certificates[certificate_name], 'services'))
+
             except Exception as error:
                 self._warn('Unable to install keys and certificates for ', private_key_name, '\n', error, '\n')
 
         for zone_name in updated_key_zones:
             self._reload_zone(zone_name)
-        for service_name in updated_services:
-            self._reload_service(service_name)
 
     def revoke_certificates(self, private_key_names):
         private_keys = self._config('private_keys')
@@ -1408,6 +1549,9 @@ class AcmeManager(object):
                     self.archive_chain(certificate_name, key_type, archive_name=private_key_name, archive_date=archive_date)
                     self.archive_private_key('full_key', certificate_name, key_type, archive_name=private_key_name, archive_date=archive_date)
                     self.archive_params(certificate_name, archive_name=private_key_name, archive_date=archive_date)
+                    ct_submit_logs = self._option_list(key_certificates[certificate_name], 'ct_submit_logs')
+                    for ct_log_name in ct_submit_logs:
+                        self.archive_sct(certificate_name, key_type, ct_log_name, archive_name=private_key_name, archive_date=archive_date)
 
                     if (not self._setting('slave_mode')):
                         for zone_name in key_certificates[certificate_name]['alt_names']:
@@ -1481,11 +1625,51 @@ class AcmeManager(object):
         for zone_name in tlsa_zones:
             self._set_tlsa_records(zone_name, self._zone_key(zone_name), tlsa_zones[zone_name])
 
+    def update_signed_certificate_timestamps(self, private_key_names):
+        if (not self._directory('sct')):
+            return
+
+        private_keys = self._config('private_keys')
+        for private_key_name in private_keys:
+            if (private_key_names and (private_key_name not in private_key_names)):
+                continue
+
+            key_options = self._get_key_options(private_keys[private_key_name])
+            if (not key_options):
+                self._warn('No configured private key types for ', private_key_name, '\n')
+                continue
+
+            transactions = []
+            key_certificates = private_keys[private_key_name].get('certificates', {})
+            for certificate_name in key_certificates:
+                ct_submit_logs = self._option_list(key_certificates[certificate_name], 'ct_submit_logs')
+                if (ct_submit_logs):
+                    certificate_key_types = self._get_list(key_certificates[certificate_name], 'key_types', key_options.keys())
+                    for key_type in certificate_key_types:
+                        certificate = self.load_certificate('certificate', certificate_name, key_type)
+                        chain = self.load_chain(certificate_name, key_type)
+                        for ct_log_name in ct_submit_logs:
+                            sct_data = self.fetch_sct(ct_log_name, certificate, chain)
+                            if (sct_data):
+                                self._note(ct_log_name, ' has SCT for ', key_type.upper(), ' certificate ', certificate_name, ' at ',
+                                           self._sct_datetime(sct_data.timestamp).isoformat(), '\n')
+                            existing_sct_data = self.load_sct(certificate_name, key_type, ct_log_name)
+                            if (sct_data and ((not existing_sct_data) or (sct_data != existing_sct_data))):
+                                self._status('Saving Signed Certificate Timestamp for ', key_type.upper(), ' certificate ', certificate_name,
+                                             ' from ', ct_log_name, '\n')
+                                transactions.append(self.save_sct(certificate_name, key_type, ct_log_name, sct_data))
+                                self.update_services(self._get_list(key_certificates[certificate_name], 'services'))
+
+            try:
+                self._commit_file_transactions(transactions, archive_name=None)
+            except Exception as error:
+                self._warn('Unable to save Signed Certificate Timestamps for ', private_key_name, '\n', error, '\n')
+
     def _process_running(self, pid_file_path):
         try:
             with open(pid_file_path) as pid_file:
                 return (-1 < os.getsid(int(pid_file.read())))
-        except:
+        except Exception:
             pass
         return False
 
@@ -1508,10 +1692,14 @@ class AcmeManager(object):
                 self.process_authorizations(self.args.private_key_names)
             elif (self.args.tlsa):
                 self.update_tlsa_records(self.args.private_key_names)
+            elif (self.args.sct):
+                self.update_signed_certificate_timestamps(self.args.private_key_names)
             else:
                 self.process_authorizations(self.args.private_key_names)
                 self.process_certificates(self.args.private_key_names)
                 self.update_tlsa_records(self.args.private_key_names)
+                self.update_signed_certificate_timestamps(self.args.private_key_names)
+            self.reload_services()
             del self.acme_client
         finally:
             os.remove(pid_file_path)

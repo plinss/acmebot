@@ -42,6 +42,12 @@ exposing the full list of subdomains in the alternative names of the root domain
 or reissuing the root domain's certificate every time a subdomain is added or removed.
 
 
+### Hypertext Public Key Pin (HPKP) Support
+
+This tool automatically generates and maintains HPKP header information suitable to be directly included in server configuraton files.
+Support for Apache and Nginx are provided by default, other servers may be added by the user.
+
+
 ### Automatic Management of Backup Private Keys
 
 Using HPKP requires a second public key to provide a backup when private keys are changed.
@@ -53,6 +59,13 @@ The tool also automatically maintains proper HPKP header information.
 
 This tool can generate both RSA and ECDSA certificates.
 By default it will generate and maintain both types of certificates.
+
+
+### Certificate Transparency / Signed Certificate Timestamp Support
+
+This tool can automatically register your certificates with multiple certificate transparency logs and retrieve Signed Certificate Timestamps (SCTs) for each.
+The retrieved SCTs are suitable to be deilvered via a TLS extension,
+SCT TLS extension modules are available for [Apache](https://httpd.apache.org/docs/trunk/mod/mod_ssl_ct.html) and [Nginx](https://github.com/grahamedgecombe/nginx-ct).
 
 
 ### Mixed Use of DNS and HTTP Authorization
@@ -83,8 +96,8 @@ Requires Python 3.4+ and the acme and py3dns packages.
 
 On Debian, these can be installed via:
 
-    apt-get install build-essential libssl-dev libffi-dev python3-dev python3-pip
-    pip3 install -r requirements.txt
+    sudo apt-get install build-essential libssl-dev libffi-dev python3-dev python3-pip
+    sudo pip3 install -r requirements.txt
 
 Clone this repository or download the 'acmebot' file and install it on your server.
 Copy the 'acmebot.example.json' file to 'acmebot.json' and edit the configuration options.
@@ -120,7 +133,7 @@ The root certificate for Let's Encrypt can be obtained [here](https://letsencryp
 ### Basic Configuration
 
 While the example configuration file may appear complicated,
-it is meant to show all possible configuration options,
+it is meant to show all possible configuration options and their defaults,
 rather than demonstrate a basic simple configuration.
 
 The only items that must be present in the configuration file to create and maintain a certificate are your account email address,
@@ -174,6 +187,7 @@ For example:
 
 See the HTTP Challenges section for more information.
 
+
 ### First Run
 
 Once the configuration file is in place,
@@ -191,6 +205,7 @@ generate primary private keys as needed for the configured certificates,
 issue certificates,
 generate backup private keys,
 generate custom Diffie-Hellman parameters,
+retrieve Signed Certificate Timestamps from certificate transparency logs,
 and install the certificates and private keys into /etc/ssl/certs and /etc/ssl/private.
 
 If desired, you can test the tool using Let's Encrypt's staging server.
@@ -203,7 +218,7 @@ you should delete the client key and registration files (/var/local/acmebot/*.js
 ## File Locations
 
 After a successful certificate issuance,
-up to fifteen files will be created per certificate.
+up to seventeen files will be created per certificate.
 
 The locations for these files can be controlled via the 'directories' section of the configuration file.
 The default locations are used here for brevity.
@@ -217,7 +232,7 @@ This is designed to prevent a mismatch between certificates and private keys sho
 ### Private Keys
 
 Two private key files will be created in /etc/ssl/private for each key type.
-The primary: &lt;filename&gt;.&lt;key-type&gt;.key; and a backup key: &lt;filename&gt;_backup.&lt;key-type&gt;.key.
+The primary: &lt;private-key-name&gt;.&lt;key-type&gt;.key; and a backup key: &lt;private-key-name&gt;_backup.&lt;key-type&gt;.key.
 
 The private key files will be written in PEM format and will be readable by owner and group.
 
@@ -225,24 +240,24 @@ The private key files will be written in PEM format and will be readable by owne
 ### Certificate Files
 
 Two certificate files will be created for each key type,
-one in /etc/ssl/certs, named &lt;filename&gt;.&lt;key-type&gt;.pem,
+one in /etc/ssl/certs, named &lt;certificate-name&gt;.&lt;key-type&gt;.pem,
 containing the certificate,
 followed by any intermediate certificates sent by the certificate authority,
 followed by custom Diffie-Hellman and elliptic curve paramaters;
-the second file will be created in /etc/ssl/private, named &lt;filename&gt;_full.&lt;key-type&gt;.key,
+the second file will be created in /etc/ssl/private, named &lt;certificate-name&gt;_full.&lt;key-type&gt;.key,
 and will contain the private key,
 followed by the certificate,
 followed by any intermediate certificates sent by the certificate authority,
 followed by custom Diffie-Hellman and elliptic curve paramaters.
 
-The &lt;filename&gt;_full.&lt;key-type&gt;.key file is useful for services that require both the private key and certificate to be in the same file,
+The &lt;certificate-name&gt;_full.&lt;key-type&gt;.key file is useful for services that require both the private key and certificate to be in the same file,
 such as ZNC.
 
 
 ### Intermediate Certificate Chain File
 
 If the certificate authority uses intermediate certificates to sign your certificates,
-a file will be created in /etc/ssl/certs, named &lt;filename&gt;_chain.&lt;key-type&gt;.pem for each key type,
+a file will be created in /etc/ssl/certs, named &lt;certificate-name&gt;_chain.&lt;key-type&gt;.pem for each key type,
 containing the intermediate certificates sent by the certificate authority.
 
 This file will not be created if the 'chain' directory is set to 'null'.
@@ -256,7 +271,7 @@ and therefore the intermediate certificate key type may not match the file name 
 
 If the 'root_cert.&lt;key-type&gt;.pem' file is present (see Installation),
 then an additional certificate file will be generated in /etc/ssl/certs,
-named &lt;filename&gt;+root.&lt;key-type&gt;.pem for each key type.
+named &lt;certificate-name&gt;+root.&lt;key-type&gt;.pem for each key type.
 This file will contain the certificate,
 followed by any intermediate certificates sent by the certificate authority,
 followed by the root certificate,
@@ -271,7 +286,7 @@ This file is useful for configuring OSCP stapling on Nginx servers.
 ### Diffie-Hellman Parameter File
 
 If custom Diffie-Hellman parameters or a custom elliptical curve are configured,
-a file will be created in /etc/ssl/params, named &lt;filename&gt;_param.pem,
+a file will be created in /etc/ssl/params, named &lt;certificate-name&gt;_param.pem,
 containing the Diffie-Hellman parameters and elliptical curve paramaters.
 
 This file will not be created if the 'param' directory is set to 'null'.
@@ -279,12 +294,20 @@ This file will not be created if the 'param' directory is set to 'null'.
 
 ### Hypertext Public Key Pin (HPKP) Files
 
-Two additional files will be created in /etc/ssl/hpkp, named  &lt;filename&gt;.apache and &lt;filename&gt;.nginx.
+Two additional files will be created in /etc/ssl/hpkp, named  &lt;private-key-name&gt;.apache and &lt;private-key-name&gt;.nginx.
 These files contain HTTP header directives setting HPKP for both the primary and backup private keys for each key type.
 
 Each file is suitable to be included in the server configuration for either Apache or Nginx respectively.
 
 Thess files will not be created if the 'hpkp' directory is set to 'null'.
+
+
+### Signed Certificate Timestamp (SCT) Files
+
+One additional file will be created for each key type and configured certificate transparency log in /etc/ssl/scts/&lt;certificate-name&gt;/&lt;key-type&gt;/&lt;log-name&gt;.sct.
+These files contain SCT information in binary form suitable to be included in a TLS extension.
+By default, SCTs will be retrieved from the Google Icarus certificate transparency log,
+which is where Let's Encrypt submits issued certificates.
 
 
 ### Archive Directory
@@ -313,10 +336,14 @@ for example using Apache,
 create the file /etc/apache2/snippets/ssl/example.com containing:
 
     SSLCertificateFile    /etc/ssl/certs/example.com.rsa.pem
+    CTStaticSCTs /etc/ssl/certs/example.com.rsa.pem /etc/ssl/scts/example.com/rsa        # requires mod_ssl_ct to be installed
     SSLCertificateKeyFile /etc/ssl/private/example.com.rsa.key
+
     SSLCertificateFile    /etc/ssl/certs/example.com.ecdsa.pem
+    CTStaticSCTs /etc/ssl/certs/example.com.ecdsa.pem /etc/ssl/scts/example.com/ecdsa    # requires mod_ssl_ct to be installed
     SSLCertificateKeyFile /etc/ssl/private/example.com.ecdsa.key
-    Header set Strict-Transport-Security "max-age=31536000"
+
+    Header set Strict-Transport-Security "max-age=63072000"
     Include /etc/ssl/hpkp/example.com.apache
 
 and then in each host configuration using that certificate, simply add:
@@ -325,14 +352,22 @@ and then in each host configuration using that certificate, simply add:
 
 For Nginx the /etc/nginx/snippets/ssl/example.com file would contain:
 
+    ssl_ct on;                                                      # requires nginx-ct module to be installed
+
     ssl_certificate         /etc/ssl/certs/example.com.rsa.pem;
+    ssl_ct_static_scts      /etc/ssl/scts/example.com/rsa;          # requires nginx-ct module to be installed
     ssl_certificate_key     /etc/ssl/private/example.com.rsa.key;
+
     ssl_certificate         /etc/ssl/certs/example.com.ecdsa.pem;   # requires nginx 1.11.0+ to use multiple certificates
+    ssl_ct_static_scts      /etc/ssl/scts/example.com/ecdsa;        # requires nginx-ct module to be installed
     ssl_certificate_key     /etc/ssl/private/example.com.ecdsa.key;
+
     ssl_trusted_certificate /etc/ssl/certs/example.com+root.rsa.pem;
+
     ssl_dhparam             /etc/ssl/params/example.com_param.pem;
     ssl_ecdh_curve secp384r1;
-    add_header Strict-Transport-Security "max-age=31536000";
+
+    add_header Strict-Transport-Security "max-age=63072000";
     include /etc/ssl/hpkp/example.com.nginx;
 
 and can be used via:
@@ -354,6 +389,7 @@ The file must adhere to standard JSON format.
 The file 'acmebot.example.json' provides a template of all configuration options and their default values.
 Entries inside angle brackets '&lt;example&gt;' must be replaced (without the angle brackets),
 all other values may be removed unless you want to override the default values.
+
 
 ### Account
 
@@ -413,6 +449,8 @@ The default value is 'null'.
 If not null, the 'report-uri' directive will be included in the HPKP headers.
 * 'ocsp_must_staple' specifies if the OCSP Must-Staple extension is added to certificates.
 The default value is 'false'.
+* 'ct_submit_logs' specifies the list of certificate transparency logs to submit certificates to.
+The default value is ['google-icarus'], which is the log that Let's Encrypt submits to.
 * 'renewal_days' specifies the number of days before expiration when the tool will attempt to renew a certificate.
 The default value is '30'.
 * 'expiration_days' specifies the number of days that private keys should be used for.
@@ -459,6 +497,7 @@ Example:
             "pin_subdomains": true,
             "hpkp_report_uri": null,
             "ocsp_must_staple": false,
+            "ct_submit_logs": ["google_icarus"],
             "renewal_days": 30,
             "expiration_days": 730,
             "auto_rollover": false,
@@ -506,6 +545,9 @@ The default value is '/etc/ssl/challenge'.
 * 'hpkp' specifies the directory to store HPKP header files.
 The default value is '/etc/ssl/hpkp'.
 HPKP header files may be turned off by setting this to 'null'.
+* 'sct' specifies the directory to store Signed Certificate Timestamp files.
+The default value id '/etc/ssl/scts/&lt;certificate-name&gt;/&lt;key-type&gt;'.
+SCT files may be turned off by setting this to 'null'.
 * 'update_key' specifies the directory to search for DNS update key files.
 The default value is '/etc/ssl/update_keys'.
 * 'archive' specifies the directory to store older versions of files that are replaced by this tool.
@@ -528,6 +570,7 @@ Example:
             "param": "/etc/ssl/params",
             "challenge": "/etc/ssl/challenges",
             "hpkp": "/etc/ssl/hpkp",
+            "sct": "/etc/ssl/scts/{name}/{key_type}",
             "update_key": "/etc/ssl/update_keys",
             "archive": "/etc/ssl/archive"
         },
@@ -537,6 +580,7 @@ Example:
 Directory values are treated as Python format strings,
 fields available for directories are: 'name', 'key_type', 'suffix', 'server'.
 The 'name' field is the name of the private key or certificate.
+
 
 ### Services
 
@@ -634,6 +678,8 @@ The default value is the value specified in the 'settings' section.
 If not null, the 'report-uri' directive will be included in the HPKP headers.
 * 'ocsp_must_staple' specifies if the OCSP Must-Staple extension is added to certificates.
 The default value is the value specified in the 'settings' section.
+* 'ct_submit_logs' specifies the list of certificate transparency logs to submit the certificate to.
+The default value is the value specified in the 'settings' section.
 
 Example:
 
@@ -656,7 +702,8 @@ Example:
                 "hpkp_days": 30,
                 "pin_subdomains": true,
                 "hpkp_report_uri": null,
-                "ocsp_must_staple": false
+                "ocsp_must_staple": false,
+                "ct_submit_logs": ["google_icarus"],
             }
         }
     }
@@ -694,7 +741,8 @@ Example:
                         "key_types": ["rsa"],
                         "dhparam_size": 2048,
                         "ecparam_curve": "secp384r1",
-                        "ocsp_must_staple": true
+                        "ocsp_must_staple": true,
+                        "ct_submit_logs": ["google_icarus"],
                     },
                     "mail.example.com": {
                         "alt_names": {
@@ -950,6 +998,7 @@ The 'name' field is the name of the private key or certificate.
 * 'param' specifies the name of Diffie-Hellman parameter files.
 * 'challenge' specifies the name of ACME challenge files used for local DNS updates.
 * 'hpkp' specifies the name of HPKP header files.
+* 'sct' specifies the name of SCT files.
 
 Example:
 
@@ -964,7 +1013,8 @@ Example:
             "chain": "{name}_chain{suffix}.pem",
             "param": "{name}_param.pem",
             "challenge": "{name}",
-            "hpkp": "{name}.{server}"
+            "hpkp": "{name}.{server}",
+            "sct": "{ct_log_name}.sct"
         },
         ...
     }
@@ -987,6 +1037,31 @@ Example:
         "hpkp_headers": {
             "apache": "Header always set Public-Key-Pins \"{header}\"\n",
             "nginx": "add_header Public-Key-Pins \"{header}\";\n"
+        },
+        ...
+    }
+
+
+### Certificate Transparency Logs
+
+This section defines the set of certificate transparency logs available to submit certificates to and retrieve SCTs from.
+Additional logs can be aded at will.
+Each log definition requires the primary API URL of the log, and the log's ID in base64 format.
+A list of currently active logs and their IDs can be found at [certificate-transparency.org](https://www.certificate-transparency.org/known-logs).
+
+Example:
+
+    {
+        ...,
+        "ct_logs": {
+            "google_pilot": {
+                "url": "https://ct.googleapis.com/pilot",
+                "id": "pLkJkLQYWBSHuxOizGdwCjw1mAT5G9+443fNDsgN3BA=
+            },
+            "google_icarus": {
+                "url": "https://ct.googleapis.com/icarus",
+                "id": "KTxRllTIOWW6qlD8WAfUt2+/WHopctykwwz05UVH9Hg="
+            }
         },
         ...
     }
@@ -1092,7 +1167,8 @@ generate backup private keys,
 generate custom Diffie-Hellman parameters,
 install certificate and key files,
 reload services associated to the certificates,
-and update TLSA records.
+update TLSA records,
+and retrieve current Signed Certificate Timestamps (SCTs) from configured certificate transparency logs.
 
 Each subsequent run will ensure that all authorizations remain valid,
 check if any backup private keys have passed their expiration date,
@@ -1112,6 +1188,8 @@ local DNS updates will be attempted (to update TLSA records) and associated serv
 
 When using remote DNS updates,
 all configured TLSA records will be verified and updated as needed on each run.
+
+Configured certificate transparency logs will be queried and SCT files will be updated as necessary.
 
 All certificates and private keys will normally be processed on each run,
 to restrict processing to specific private keys (and their certificates),
@@ -1210,6 +1288,11 @@ Use of the '--auth' option on the command line will limit the tool to only perfo
 ### Remote TLSA Updates
 
 Use of the '--tlsa' option on the command line will limit the tool to only verifying and updating configured TLSA records via remote DNS updates.
+
+
+### Signed Certificate Timestamp Updates
+
+Use of the '--sct' option on the command line will limit the tool to only verifying and updating configured Signed Certificate Timestamp files.
 
 
 ## Master/Slave Setup

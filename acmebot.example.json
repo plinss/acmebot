@@ -15,6 +15,7 @@
         "pin_subdomains": true,
         "hpkp_report_uri": null,
         "ocsp_must_staple": false,
+        "ct_submit_logs": ["google_icarus"],
         "renewal_days": 30,
         "expiration_days": 730,
         "auto_rollover": false,
@@ -39,6 +40,7 @@
         "param": "/etc/ssl/params",
         "challenge": "/etc/ssl/challenges",
         "hpkp": "/etc/ssl/hpkp",
+        "sct": "/etc/ssl/scts/{name}/{key_type}",
         "update_key": "/etc/ssl/update_keys",
         "archive": "/etc/ssl/archive"
     },
@@ -56,7 +58,8 @@
         "chain": "{name}_chain{suffix}.pem",
         "param": "{name}_param.pem",
         "challenge": "{name}",
-        "hpkp": "{name}.{server}"
+        "hpkp": "{name}.{server}",
+        "sct": "{ct_log_name}.sct"
     },
     "hpkp_headers": {
         "apache": "Header always set Public-Key-Pins \"{header}\"\n",
@@ -74,6 +77,52 @@
         "prosody": "systemctl restart prosody",
         "synapse": "systemctl restart matrix-synapse",
         "znc": "systemctl restart znc"
+    },
+    "ct_logs": {
+        "google_pilot": {
+            "url": "https://ct.googleapis.com/pilot",
+            "id": "pLkJkLQYWBSHuxOizGdwCjw1mAT5G9+443fNDsgN3BA="
+        },
+        "google_icarus": {
+            "url": "https://ct.googleapis.com/icarus",
+            "id": "KTxRllTIOWW6qlD8WAfUt2+/WHopctykwwz05UVH9Hg="
+        },
+        "google_rocketeer": {
+            "url": "https://ct.googleapis.com/rocketeer",
+            "id": "7ku9t3XOYLrhQmkfq+GeZqMPfl+wctiDAMR7iXqo/cs="
+        },
+        "google_skydiver": {
+            "url": "https://ct.googleapis.com/skydiver",
+            "id": "u9nfvB+KcbWTlCOXqpJ7RzhXlQqrUugakJZkNo4e0YU="
+        },
+        "digicert": {
+            "url": "https://ct1.digicert-ct.com/log",
+            "id": "VhQGmi/XwuzT9eG9RLI+x0Z2ubyZEVzA75SYVdaJ0N0="
+        },
+        "symantec_ct": {
+            "url": "https://ct.ws.symantec.com",
+            "id": "3esdK3oNT6Ygi4GtgWhwfi6OnQHVXIiNPRHEzbbsvsw="
+        },
+        "symantec_vega": {
+            "url": "https://vega.ws.symantec.com",
+            "id": "vHjh38X2PGhGSTNNoQ+hXwl5aSAJwIG08/aRfz7ZuKU="
+        },
+        "venafi": {
+            "url": "https://ctlog.api.venafi.com",
+            "id": "rDua7X+pZ0dXFZ5tfVdWcvnZgQCUHpve/+yhMTt1eC0="
+        },
+        "wosign": {
+            "url": "https://ctlog.wosign.com",
+            "id": "QbLcLonmPOSvG6e7Kb9oxt7m+fHMBH4w3/rjs7olkmM="
+        },
+        "cnnic": {
+            "url": "https://ctserver.cnnic.cn",
+            "id": "pXesnO11SN2PAltnokEInfhuD0duwgPC7L7bGF8oJjg="
+        },
+        "startssl": {
+            "url": "https://ct.startssl.com",
+            "id": "NLtq1sPfnAPuqKSZ/3iRSGydXlysktAfe/0bzhnbSO8="
+        }
     },
     "certificates": {
         "<certificate-name>": {
@@ -105,7 +154,8 @@
             "hpkp_days": 30,
             "pin_subdomains": true,
             "hpkp_report_uri": null,
-            "ocsp_must_staple": false
+            "ocsp_must_staple": false,
+            "ct_submit_logs": ["google_icarus"]
         }
     },
     "private_keys": {
@@ -133,7 +183,8 @@
                     "dhparam_size": 2048,
                     "ecparam_curve": "secp384r1",
                     "key_types": ["rsa", "ecdsa"],
-                    "ocsp_must_staple": false
+                    "ocsp_must_staple": false,
+                    "ct_submit_logs": ["google_icarus"],
                 }
             },
             "key_types": ["rsa", "ecdsa"],
