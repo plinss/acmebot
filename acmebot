@@ -655,28 +655,40 @@ class AcmeManager(object):
             return OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_ASN1, certificate.wrapped)
         return None
 
-    def hpkp_headers_present(self, file_name):
-        hpkp_headers = self._config('hpkp_headers')
-        for server, header_format in hpkp_headers.items():
-            if (header_format and not os.path.isfile(self._file_path('hpkp', file_name, server=server))):
-                return False
-        return True
-
-    def save_hpkp_headers(self, file_name, private_keys, hpkp_days, pin_subdomains, report_uri):
+    def _generate_hpkp_headers(self, file_name, private_keys, hpkp_days, pin_subdomains, report_uri):
         pins = '; '.join([r'pin-sha256=\"{digest}\"'.format(digest=base64.b64encode(self._public_key_digest(private_key)).decode('ascii'))
-                          for private_key in private_keys])
+                         for private_key in private_keys])
         duration = str(hpkp_days * 86400)
         sub_domains = ' includeSubdomains;' if (pin_subdomains) else ''
         report = r' report-uri=\"{report_uri}\";'.format(report_uri=report_uri) if (report_uri) else ''
         header = '{pins}; max-age={duration};{sub_domains}{report}'.format(pins=pins, duration=duration, sub_domains=sub_domains, report=report)
 
         hpkp_headers = self._config('hpkp_headers')
-        transactions = []
+        server_headers = {}
         for server, header_format in hpkp_headers.items():
             if (header_format):
-                with FileTransaction('hpkp', self._file_path('hpkp', file_name, server=server), 0o644) as transaction:
-                    transaction.write(header_format.format(header=header, key_name=file_name, server=server))
-                    transactions.append(transaction)
+                server_headers[server] = header_format.format(header=header, server=server, name=file_name)
+        return server_headers
+
+    def hpkp_headers_present(self, file_name, private_keys, hpkp_days, pin_subdomains, report_uri):
+        server_headers = self._generate_hpkp_headers(file_name, private_keys, hpkp_days, pin_subdomains, report_uri)
+        for server, header in server_headers.items():
+            header_file_path = self._file_path('hpkp', file_name, server=server)
+            if (os.path.isfile(header_file_path)):
+                with open(header_file_path, 'r') as header_file:
+                    if (header != header_file.read()):
+                        return False
+            else:
+                return False
+        return True
+
+    def save_hpkp_headers(self, file_name, private_keys, hpkp_days, pin_subdomains, report_uri):
+        server_headers = self._generate_hpkp_headers(file_name, private_keys, hpkp_days, pin_subdomains, report_uri)
+        transactions = []
+        for server, header in server_headers.items():
+            with FileTransaction('hpkp', self._file_path('hpkp', file_name, server=server), 0o644) as transaction:
+                transaction.write(header)
+                transactions.append(transaction)
         return transactions
 
     def archive_hpkp_headers(self, file_name, archive_name='', archive_date=None):
@@ -1102,7 +1114,7 @@ class AcmeManager(object):
         key_size = self._option(private_key_config, 'key_size')
         key_curve = self._option(private_key_config, 'key_curve')
         key_types = self._get_list(private_key_config, 'key_types', self._key_types)
-        key_options = {}
+        key_options = collections.OrderedDict()
         if (key_size and ('rsa' in key_types)):
             key_options['rsa'] = (key_size, )
         if (key_curve and ('ecdsa' in key_types)):
@@ -1261,9 +1273,8 @@ class AcmeManager(object):
                     chain = self.acme_client.fetch_chain(certificate_resource)
                     issued_certificates.append(CertificateData(certificate_name, key_type, certificate_resource.body, chain, key_certificates[certificate_name]))
 
-            if (issued_certificates):
-                processed_keys.append(PrivateKeyData(private_key_name, key_options, keys, backup_keys,
-                                                     generated_private_key, rolled_private_key, changed_private_key, issued_certificates))
+            processed_keys.append(PrivateKeyData(private_key_name, key_options, keys, backup_keys,
+                                                 generated_private_key, rolled_private_key, changed_private_key, issued_certificates))
 
         # install keys and certificates
         root_certificates = self.load_root_certificates()
@@ -1290,14 +1301,16 @@ class AcmeManager(object):
                                                               backup_keys[key_type].key, timestamp=backup_keys[key_type].timestamp))
 
             hpkp_days = self._option(private_keys[private_key_name], 'hpkp_days')
-            if ((0 < hpkp_days) and (self._directory('hpkp'))
-                    and (private_key_data.generated_key or private_key_data.changed_key or generated_backup_key or not self.hpkp_headers_present(private_key_name))):
+            if (0 < hpkp_days) and (self._directory('hpkp')):
+                pin_subdomains = self._option(private_keys[private_key_name], 'pin_subdomains')
+                hpkp_report_uri = self._option(private_keys[private_key_name], 'hpkp_report_uri')
                 keys = ([private_key_data.keys[key_type].key for key_type in private_key_data.key_options if private_key_data.keys[key_type].key]
                         + [private_key_data.backup_keys[key_type].key for key_type in private_key_data.key_options if private_key_data.backup_keys[key_type].key])
-                if (1 < len(keys)):
-                    transactions += self.save_hpkp_headers(private_key_name, keys, hpkp_days,
-                                                           self._option(private_keys[private_key_name], 'pin_subdomains'),
-                                                           self._option(private_keys[private_key_name], 'hpkp_report_uri'))
+                if ((1 < len(keys))
+                        and (private_key_data.generated_key or private_key_data.changed_key or generated_backup_key
+                             or not self.hpkp_headers_present(private_key_name, keys, hpkp_days, pin_subdomains, hpkp_report_uri))):
+                    self._status('Generating HPKP headers for ', private_key_name, '\n')
+                    transactions += self.save_hpkp_headers(private_key_name, keys, hpkp_days, pin_subdomains, hpkp_report_uri)
 
             processed_params = set()
             for certificate_data in private_key_data.issued_certificates:
