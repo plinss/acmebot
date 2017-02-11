@@ -84,7 +84,7 @@ class AcmeManager(object):
             manager = cls()
             manager.run()
             del manager
-        except AcmeError as error:
+        except AcmeError:
             pass
 
     def __init__(self):
@@ -462,7 +462,8 @@ class AcmeManager(object):
 
     def _lookup_tlsa_records(self, name_server, host, port, protocol):
         try:
-            response = DNS.Request(server=name_server).req(name='_{port}._{protocol}.{host}'.format(port=port, protocol=protocol, host=host), qtype=52, protocol='tcp')
+            response = DNS.Request(server=name_server).req(name='_{port}._{protocol}.{host}'.format(port=port, protocol=protocol, host=host),
+                                                           qtype=52, protocol='tcp')
             if ('NOERROR' == response.header['status']):
                 return ['{} {} {} {}'.format(answer['data'][0], answer['data'][1], answer['data'][2], binascii.hexlify(answer['data'][3:]).decode('ascii'))
                         for answer in response.answers]
@@ -662,7 +663,8 @@ class AcmeManager(object):
         return True
 
     def save_hpkp_headers(self, file_name, private_keys, hpkp_days, pin_subdomains, report_uri):
-        pins = '; '.join([r'pin-sha256=\"{digest}\"'.format(digest=base64.b64encode(self._public_key_digest(private_key)).decode('ascii')) for private_key in private_keys])
+        pins = '; '.join([r'pin-sha256=\"{digest}\"'.format(digest=base64.b64encode(self._public_key_digest(private_key)).decode('ascii'))
+                          for private_key in private_keys])
         duration = str(hpkp_days * 86400)
         sub_domains = ' includeSubdomains;' if (pin_subdomains) else ''
         report = r' report-uri=\"{report_uri}\";'.format(report_uri=report_uri) if (report_uri) else ''
@@ -1210,7 +1212,8 @@ class AcmeManager(object):
                         if (existing_certificate):
                             certificate_common_name = existing_certificate.get_subject().commonName
                             if (common_name != certificate_common_name):
-                                self._status('Common name changed for ', key_type.upper(), ' certificate ', certificate_name, ' from ', certificate_common_name, ' to ', common_name, '\n')
+                                self._status('Common name changed for ', key_type.upper(), ' certificate ', certificate_name, ' from ', certificate_common_name,
+                                             ' to ', common_name, '\n')
                             else:
                                 certificate_alt_names = self.get_alt_names(existing_certificate)
                                 new_alt_names = set(alt_names)
@@ -1218,9 +1221,11 @@ class AcmeManager(object):
                                 if (new_alt_names != existing_alt_names):
                                     added_alt_names = new_alt_names - existing_alt_names
                                     removed_alt_names = existing_alt_names - new_alt_names
+                                    added = ', '.join([alt_name for alt_name in alt_names if (alt_name in added_alt_names)])
+                                    removed = ', '.join([alt_name for alt_name in certificate_alt_names if (alt_name in removed_alt_names)])
                                     self._status('Alt names changed for ', key_type.upper(), ' certificate ', certificate_name,
-                                                 (', adding ' + ', '.join([alt_name for alt_name in alt_names if (alt_name in added_alt_names)])) if added_alt_names else '',
-                                                 (', removing ' + ', '.join([alt_name for alt_name in certificate_alt_names if (alt_name in removed_alt_names)])) if removed_alt_names else '',
+                                                 (', adding ' + added) if added else '',
+                                                 (', removing ' + removed) if removed else '',
                                                  '\n')
                                 else:
                                     if (not self._private_key_matches_certificate(keys[key_type].key, existing_certificate)):
@@ -1240,7 +1245,8 @@ class AcmeManager(object):
 
                     csr = self.generate_csr(keys[key_type].key, common_name, alt_names,
                                             self._option(key_certificates[certificate_name], 'ocsp_must_staple'))
-                    self._status('Requesting ', key_type.upper(), ' certificate for ', common_name, (' with alt names: ' + ', '.join(alt_names)) if (alt_names) else '', '\n')
+                    self._status('Requesting ', key_type.upper(), ' certificate for ', common_name,
+                                 (' with alt names: ' + ', '.join(alt_names)) if (alt_names) else '', '\n')
                     try:
                         certificate_resource = self.acme_client.request_issuance(jose.ComparableX509(csr),
                                                                                  [self.authorizations[domain_name] for domain_name in alt_names])
