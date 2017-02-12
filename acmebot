@@ -6,35 +6,37 @@
 # apt-get install build-essential libssl-dev libffi-dev python3-dev python3-pip
 # pip3 install acme py3dns
 
-import os
-import sys
 import argparse
-import json
-import time
-import datetime
-import re
-import subprocess
-import collections
-import tempfile
-import pwd
-import grp
-import heapq
-import hashlib
 import base64
-import pkg_resources
 import binascii
+import collections
+import datetime
+import getpass
+import grp
+import hashlib
+import heapq
+import json
+import os
+import pwd
+import re
 import struct
+import subprocess
+import sys
+import tempfile
+import time
 import urllib
 
-from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives.asymmetric import rsa, ec
-from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat, PrivateFormat, NoEncryption
+import DNS
 
 import OpenSSL
 
-from acme import client, messages, jose
+from acme import client, jose, messages
 
-import DNS
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.asymmetric import ec, rsa
+from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption, PrivateFormat, PublicFormat
+
+import pkg_resources
 
 
 DNSTuple = collections.namedtuple('DNSTuple', ['datetime', 'name_server', 'domain_name', 'response', 'attempt_count'])
@@ -43,12 +45,17 @@ KeyData = collections.namedtuple('KeyData', ['key', 'timestamp'])
 SCTData = collections.namedtuple('SCTData', ['version', 'id', 'timestamp', 'extensions', 'signature'])
 PrivateKeyData = collections.namedtuple('PrivateKeyData', ['name', 'key_options', 'keys', 'backup_keys',
                                                            'generated_key', 'rolled_key', 'changed_key', 'issued_certificates'])
+KeyCipherData = collections.namedtuple('KeyCipherData', ['cipher', 'passphrase', 'forced'])
 CertificateData = collections.namedtuple('CertificateData', ['certificate_name', 'key_type', 'certificate', 'chain', 'config'])
 TLSAData = collections.namedtuple('TLSAData', ['host', 'port', 'usage', 'selector', 'protocol', 'ttl',
                                                'certificates', 'chain', 'private_keys'])
 
 
 class AcmeError(Exception):
+    pass
+
+
+class PrivateKeyError(Exception):
     pass
 
 
@@ -92,7 +99,7 @@ class AcmeManager(object):
     def __init__(self):
         self.script_dir = os.path.dirname(os.path.realpath(__file__))
         self.script_name = os.path.basename(__file__)
-        self.script_version = '1.3'
+        self.script_version = '1.4'
 
         argparser = argparse.ArgumentParser(description='ACME Certificate Manager')
         argparser.add_argument('--version', action='version', version='%(prog)s ' + self.script_version)
@@ -130,12 +137,16 @@ class AcmeManager(object):
         argparser.add_argument('-s', '--sct',
                                action='store_true', dest='sct', default=False,
                                help='Update Signed Certificate Timestamps only')
+        argparser.add_argument('-p', '--pass', nargs=1, default=False,
+                               action='store', dest='passphrase', metavar='PASSPHRASE',
+                               help='Passphrase for private keys')
         self.args = argparser.parse_args()
 
         if (self.args.debug):
             sys.excepthook = debug_hook
 
         self.authorizations = {}
+        self.key_passphrases = {}
         self.updated_services = set()
 
         self.config, self.config_file_path = self._load_config(self.args.config_path, ('.', os.path.join('/etc', self.script_name), self.script_dir))
@@ -146,6 +157,8 @@ class AcmeManager(object):
                 'log_level': 'debug',
                 'key_size': 4096,
                 'key_curve': 'secp384r1',
+                'key_cipher': 'blowfish',
+                'key_passphrase': None,
                 'dhparam_size': 2048,
                 'ecparam_curve': 'secp384r1',
                 'file_user': 'root',
@@ -666,19 +679,57 @@ class AcmeManager(object):
         self._warn('Unknown key type ', key_type.upper(), '\n')
         return None
 
-    def load_private_key(self, file_type, file_name, key_type):
-        try:
-            key_file_path = self._file_path(file_type, file_name, key_type)
-            with open(key_file_path, 'r') as private_key_file:
-                return KeyData(OpenSSL.crypto.load_privatekey(OpenSSL.crypto.FILETYPE_PEM, private_key_file.read().encode('ascii')),
-                               os.stat(key_file_path).st_mtime)
-        except Exception:
-            return KeyData(None, None)
+    def key_cipher_data(self, private_key_name, force_prompt=False):
+        if (private_key_name in self.key_passphrases):
+            if (self.key_passphrases[private_key_name] or (not force_prompt)):
+                return self.key_passphrases[private_key_name]
+        private_keys = self._config('private_keys')
+        if (private_key_name in private_keys):
+            passphrase = self._option(private_keys[private_key_name], 'key_passphrase')
+            if ((passphrase is True) or (force_prompt and not passphrase)):
+                if (self.args.passphrase):
+                    passphrase = self.args.passphrase[0]
+                else:
+                    if (sys.stdin.isatty()):
+                        passphrase = getpass.getpass('Enter private key password for {name}: '.format(name=private_key_name))
+                    else:
+                        passphrase = sys.stdin.readline().strip()
+            key_cipher_data = KeyCipherData(self._option(private_keys[private_key_name], 'key_cipher'), passphrase, force_prompt) if (passphrase) else None
+            self.key_passphrases[private_key_name] = key_cipher_data
+            return key_cipher_data
+        return None
 
-    def save_private_key(self, file_type, file_name, key_type, private_key, timestamp=None, certificate=None, chain=[], dhparam_pem=None, ecparam_pem=None):
+    def load_private_key(self, file_type, file_name, key_type, key_cipher_data=None):
+        key_file_path = self._file_path(file_type, file_name, key_type)
+        if (os.path.isfile(key_file_path)):
+            try:
+                with open(key_file_path, 'r') as private_key_file:
+                    key_pem = private_key_file.read()
+                    if ('-----BEGIN ENCRYPTED PRIVATE KEY-----' in key_pem):
+                        if (not key_cipher_data):
+                            key_cipher_data = self.key_cipher_data(file_name, force_prompt=True)
+                        private_key = OpenSSL.crypto.load_privatekey(OpenSSL.crypto.FILETYPE_PEM, key_pem.encode('ascii'),
+                                                                     key_cipher_data.passphrase.encode('utf-8'))
+                    else:
+                        private_key = OpenSSL.crypto.load_privatekey(OpenSSL.crypto.FILETYPE_PEM, key_pem.encode('ascii'))
+                    return KeyData(private_key, os.stat(key_file_path).st_mtime)
+            except Exception:
+                raise PrivateKeyError(key_file_path)
+        return KeyData(None, None)
+
+    def save_private_key(self, file_type, file_name, key_type, private_key, key_cipher_data,
+                         timestamp=None, certificate=None, chain=[], dhparam_pem=None, ecparam_pem=None):
         with FileTransaction(file_type, self._file_path(file_type, file_name, key_type), chmod=0o640, timestamp=timestamp) as transaction:
             if (private_key):
-                transaction.write(OpenSSL.crypto.dump_privatekey(OpenSSL.crypto.FILETYPE_PEM, private_key).decode('ascii'))
+                if (key_cipher_data and not key_cipher_data.forced):
+                    try:
+                        key_pem = OpenSSL.crypto.dump_privatekey(OpenSSL.crypto.FILETYPE_PEM, private_key, key_cipher_data.cipher,
+                                                                 key_cipher_data.passphrase.encode('utf-8'))
+                    except Exception:
+                        raise PrivateKeyError(file_name)
+                else:
+                    key_pem = OpenSSL.crypto.dump_privatekey(OpenSSL.crypto.FILETYPE_PEM, private_key)
+                transaction.write(key_pem.decode('ascii'))
                 if (certificate):
                     transaction.write('\n')
                     self._save_certificate(transaction, certificate, chain=chain, dhparam_pem=dhparam_pem, ecparam_pem=ecparam_pem)
@@ -1001,7 +1052,8 @@ class AcmeManager(object):
                 if ('certificates' not in private_keys[certificate_name]):
                     private_keys[certificate_name]['certificates'] = collections.OrderedDict()
                 if (certificate_name not in private_keys[certificate_name]['certificates']):
-                    for config_key in ('key_types', 'key_size', 'key_curve', 'expiration_days', 'auto_rollover',
+                    for config_key in ('key_types', 'key_size', 'key_curve', 'key_cipher', 'key_passphrase',
+                                       'expiration_days', 'auto_rollover',
                                        'hpkp_days', 'pin_subdomains', 'hpkp_report_uri'):
                         if ((config_key in certificates[certificate_name]) and (config_key not in private_keys[certificate_name])):
                             private_keys[certificate_name][config_key] = certificates[certificate_name][config_key]
@@ -1278,15 +1330,20 @@ class AcmeManager(object):
             generated_private_key = False
             changed_private_key = False
 
+            key_cipher_data = self.key_cipher_data(private_key_name)
             backup_keys = {}
             youngest_key_timestamp = sys.maxsize
             oldest_key_timestamp = 0
-            for key_type in key_options:
-                backup_key_data = self.load_private_key('backup_key', private_key_name, key_type)
-                if (backup_key_data.timestamp):
-                    youngest_key_timestamp = min(youngest_key_timestamp, backup_key_data.timestamp)
-                    oldest_key_timestamp = max(oldest_key_timestamp, backup_key_data.timestamp)
-                backup_keys[key_type] = backup_key_data
+            try:
+                for key_type in key_options:
+                    backup_key_data = self.load_private_key('backup_key', private_key_name, key_type, key_cipher_data)
+                    if (backup_key_data.timestamp):
+                        youngest_key_timestamp = min(youngest_key_timestamp, backup_key_data.timestamp)
+                        oldest_key_timestamp = max(oldest_key_timestamp, backup_key_data.timestamp)
+                    backup_keys[key_type] = backup_key_data
+            except PrivateKeyError as error:
+                self._warn('Unable to load backup private key ', error, '\n')
+                continue
 
             rollover = False
             if (self.args.rollover
@@ -1301,7 +1358,11 @@ class AcmeManager(object):
             if (rollover):
                 keys = {key_type: KeyData(None, None) for key_type in key_options}
             else:
-                keys = {key_type: self.load_private_key('private_key', private_key_name, key_type) for key_type in key_options}
+                try:
+                    keys = {key_type: self.load_private_key('private_key', private_key_name, key_type, key_cipher_data) for key_type in key_options}
+                except PrivateKeyError as error:
+                    self._warn('Unable to load private key ', error, '\n')
+                    continue
 
             for key_type in key_options:
                 if (backup_keys[key_type].key and not keys[key_type].key):
@@ -1427,13 +1488,20 @@ class AcmeManager(object):
 
             transactions = []
 
-            for key_type in private_key_data.key_options:
-                if (private_key_data.generated_key or private_key_data.rolled_key):
-                    transactions.append(self.save_private_key('private_key', private_key_name, key_type,
-                                                              private_key_data.keys[key_type].key, timestamp=private_key_data.keys[key_type].timestamp))
-                if (generated_backup_key):
-                    transactions.append(self.save_private_key('backup_key', private_key_name, key_type,
-                                                              backup_keys[key_type].key, timestamp=backup_keys[key_type].timestamp))
+            key_cipher_data = self.key_cipher_data(private_key_name)
+            try:
+                for key_type in private_key_data.key_options:
+                    if (private_key_data.generated_key or private_key_data.rolled_key):
+                        transactions.append(self.save_private_key('private_key', private_key_name, key_type,
+                                                                  private_key_data.keys[key_type].key, key_cipher_data,
+                                                                  timestamp=private_key_data.keys[key_type].timestamp))
+                    if (generated_backup_key):
+                        transactions.append(self.save_private_key('backup_key', private_key_name, key_type,
+                                                                  backup_keys[key_type].key, key_cipher_data,
+                                                                  timestamp=backup_keys[key_type].timestamp))
+            except PrivateKeyError as error:
+                self._warn('Unable to encrypt private key ', error, '\n')
+                continue
 
             generated_hpkp_headers = False
             hpkp_days = self._option(private_keys[private_key_name], 'hpkp_days')
@@ -1484,9 +1552,13 @@ class AcmeManager(object):
                                                               dhparam_pem=dhparam_pem, ecparam_pem=ecparam_pem))
                 if (certificate_data.chain and self._directory('chain')):
                     transactions.append(self.save_chain(certificate_name, key_type, certificate_data.chain))
-                transactions.append(self.save_private_key('full_key', certificate_name, key_type, private_key_data.keys[key_type].key,
-                                                          certificate=certificate_data.certificate, chain=certificate_data.chain,
-                                                          dhparam_pem=dhparam_pem, ecparam_pem=ecparam_pem))
+                try:
+                    transactions.append(self.save_private_key('full_key', certificate_name, key_type, private_key_data.keys[key_type].key, key_cipher_data,
+                                                              certificate=certificate_data.certificate, chain=certificate_data.chain,
+                                                              dhparam_pem=dhparam_pem, ecparam_pem=ecparam_pem))
+                except PrivateKeyError as error:
+                    self._warn('Unable to encrypt private key ', error, '\n')
+                    continue
 
             try:
                 self._commit_file_transactions(transactions, archive_name=private_key_name)
@@ -1597,9 +1669,14 @@ class AcmeManager(object):
                 continue
 
             keys = []
-            for key_type in key_options:
-                keys.append((key_type, self.load_private_key('private_key', private_key_name, key_type).key))
-                keys.append((key_type, self.load_private_key('backup_key', private_key_name, key_type).key))
+            key_cipher_data = self.key_cipher_data(private_key_name)
+            try:
+                for key_type in key_options:
+                    keys.append((key_type, self.load_private_key('private_key', private_key_name, key_type, key_cipher_data).key))
+                    keys.append((key_type, self.load_private_key('backup_key', private_key_name, key_type, key_cipher_data).key))
+            except PrivateKeyError as error:
+                self._warn('Unable to load private key ', error, '\n')
+                continue
 
             key_certificates = private_keys[private_key_name].get('certificates', {})
             for certificate_name in key_certificates:

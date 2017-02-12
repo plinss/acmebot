@@ -68,6 +68,11 @@ The retrieved SCTs are suitable to be deilvered via a TLS extension,
 SCT TLS extension modules are available for [Apache](https://httpd.apache.org/docs/trunk/mod/mod_ssl_ct.html) and [Nginx](https://github.com/grahamedgecombe/nginx-ct).
 
 
+### Encrypted Private Keys
+
+Primary and backup private keys can optionally be encrypted using a passphrase and cipher of your choice.
+
+
 ### Mixed Use of DNS and HTTP Authorization
 
 By default this tool performs dns-01 authorizartions for domain validation.
@@ -425,6 +430,14 @@ RSA certificates can be turned off by setting this value to `0` or `null`.
 The default value is `"secp384r1"`.
 Available curves are `"secp256r1"`, `"secp384r1"`, and `"secp521r1"`.
 ECDSA certificates can be turned off by setting this value to `null`.
+* `key_cipher` specifies the cipher algorithm used to encrypt private keys.
+The default value is `"blowfish"`.
+Available ciphers those accepted by your version of OpenSSL's EVP_get_cipherbyname().
+* `key_passphrase` specifies the passphrase used to encrypt private keys.
+The default value is `null`.
+A value of `null` or `false` will result in private keys being written unencrypted.
+A value of `true` will cause the password to be read from a prompt, the command line, or stdin.
+A string value will be used as the passphrase without further input.
 * `dhparam_size` specifies the size (in bits) for custom Diffie-Hellman parameters.
 The default value is `2048`.
 Custom Diffie-Hellman parameters can be turned off by setting this value to `0` or `null`.
@@ -489,6 +502,8 @@ Example:
             "log_level": "debug",
             "key_size": 4096,
             "key_curve": "secp384r1",
+            "key_cipher": "blowfish",
+            "key_passphrase": null,
             "dhparam_size": 2048,
             "ecparam_curve": "secp384r1",
             "file_user": "root",
@@ -660,6 +675,14 @@ RSA certificates can be turned off by setting this value to `0` or `null`.
 The default value is the value specified in the `settings` section.
 Available curves are `"secp256r1"`, `"secp384r1"`, and `"secp521r1"`.
 ECDSA certificates can be turned off by setting this value to `null`.
+* `key_cipher` specifies the cipher algorithm used to encrypt the private keys.
+The default value is the value specified in the `settings` section.
+Available ciphers those accepted by your version of OpenSSL's EVP_get_cipherbyname().
+* `key_passphrase` specifies the passphrase used to encrypt private keys.
+The default value is the value specified in the `settings` section.
+A value of `null` or `false` will result in private keys being written unencrypted.
+A value of `true` will cause the password to be read from a prompt, the command line, or stdin.
+A string value will be used as the passphrase without further input.
 * `expiration_days` specifies the number of days that the backup private key should be considered valid.
 The default value is the value specified in the `settings` section.
 When the backup key reaches this age,
@@ -697,6 +720,8 @@ Example:
                 "key_types": ["rsa", "ecdsa"],
                 "key_size": 4096,
                 "key_curve": "secp384r1",
+                "key_cipher": "blowfish",
+                "key_passphrase": null,
                 "expiration_days": 730,
                 "auto_rollover": false,
                 "hpkp_days": 30,
@@ -722,7 +747,7 @@ Note that a certificate configured in the `certificates` section is equivalent t
 As such, it is an error to specify a certificate using the same name in both the `certificates` and `private_keys` sections.
 
 The private key and certificate settings are identical to those specified in the `certificates` section,
-except settings relevant to the private key: `key_size`, `key_curve`, `expiration_days`, `auto_rollover`, `hpkp_days`, `pin_subdomains`, and `hpkp_report_uri` are specified in the private key object rather than the certificate object.
+except settings relevant to the private key: `key_size`, `key_curve`, `key_cipher`, `key_passphrase`, `expiration_days`, `auto_rollover`, `hpkp_days`, `pin_subdomains`, and `hpkp_report_uri` are specified in the private key object rather than the certificate object.
 The `key_types` setting may be specified in the certificate, private key, or both.
 
 Example:
@@ -755,6 +780,8 @@ Example:
                 "key_types": ["rsa", "ecdsa"],
                 "key_size": 4096,
                 "key_curve": "secp384r1",
+                "key_cipher": "blowfish",
+                "key_passphrase": null,
                 "expiration_days": 730,
                 "auto_rollover": false,
                 "hpkp_days": 30,
@@ -1293,6 +1320,39 @@ Use of the `--tlsa` option on the command line will limit the tool to only verif
 ### Signed Certificate Timestamp Updates
 
 Use of the `--sct` option on the command line will limit the tool to only verifying and updating configured Signed Certificate Timestamp files.
+
+
+### Private Key Encryption
+
+When encrypting private keys, a passphrase must be provided.
+There are several options for providing the key.
+
+First, passphrases may be specified directly in the configuration file,
+both as a default passphrase applying to all keys,
+or specific passphrases for each key.
+Storing passphrases in cleartext in the configuration file obviously does little to protect the private keys if the configuration file is stored on the same machine.
+Either protect the configuration file or use an alternate method of providing passphrases.
+
+Second, by setting the passphrase to `true` in the configuration file (the binary value, not the string `"true"`),
+the tool will attempt to obtain the passphrases at runtime.
+
+If the tool is run via a TTY device (e.g. manually in a terminal),
+it will prompt the user for each passphrase as needed.
+Alternatively, the passphrases may be stored in a file, one per line, and input redirected from that file, e.g.
+
+    acmebot < passphrase_file.txt
+
+Passphrases passed via an input file will be used in the order that the private keys are defined in the configuration file.
+If both certificates and private key sections are defined, the private keys will be processed first, then the certificates.
+You may wish to run the tool without the input file first to verify the private key order.
+
+The third option is to provide the passphrase via the command line, e.g.
+
+    acmebot --pass "passphrase"
+
+A passphrase passed at the command line will be used for each private key that has it's value set to `true`.
+If different passphrases are desired for different keys,
+run the tool for each key specifying the private key name on the command line to restrict processing to that key.
 
 
 ## Master/Slave Setup
