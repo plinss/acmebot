@@ -690,10 +690,12 @@ class AcmeManager(object):
                 if (self.args.passphrase):
                     passphrase = self.args.passphrase[0]
                 else:
-                    if (sys.stdin.isatty()):
-                        passphrase = getpass.getpass('Enter private key password for {name}: '.format(name=private_key_name))
-                    else:
-                        passphrase = sys.stdin.readline().strip()
+                    passphrase = os.getenv('{script}_PASSPHRASE'.format(script=self.script_name.upper()))
+                    if (not passphrase):
+                        if (sys.stdin.isatty()):
+                            passphrase = getpass.getpass('Enter private key password for {name}: '.format(name=private_key_name))
+                        else:
+                            passphrase = sys.stdin.readline().strip()
             key_cipher_data = KeyCipherData(self._option(private_keys[private_key_name], 'key_cipher'), passphrase, force_prompt) if (passphrase) else None
             self.key_passphrases[private_key_name] = key_cipher_data
             return key_cipher_data

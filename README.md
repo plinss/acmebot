@@ -437,7 +437,7 @@ Available ciphers those accepted by your version of OpenSSL's EVP_get_cipherbyna
 * `key_passphrase` specifies the passphrase used to encrypt private keys.
 The default value is `null`.
 A value of `null` or `false` will result in private keys being written unencrypted.
-A value of `true` will cause the password to be read from a prompt, the command line, or stdin.
+A value of `true` will cause the password to be read from the command line, the environment, a prompt, or stdin.
 A string value will be used as the passphrase without further input.
 * `dhparam_size` specifies the size (in bits) for custom Diffie-Hellman parameters.
 The default value is `2048`.
@@ -682,7 +682,7 @@ Available ciphers those accepted by your version of OpenSSL's EVP_get_cipherbyna
 * `key_passphrase` specifies the passphrase used to encrypt private keys.
 The default value is the value specified in the `settings` section.
 A value of `null` or `false` will result in private keys being written unencrypted.
-A value of `true` will cause the password to be read from a prompt, the command line, or stdin.
+A value of `true` will cause the password to be read from the command line, the environment, a prompt, or stdin.
 A string value will be used as the passphrase without further input.
 * `expiration_days` specifies the number of days that the backup private key should be considered valid.
 The default value is the value specified in the `settings` section.
@@ -1328,18 +1328,33 @@ Use of the `--sct` option on the command line will limit the tool to only verify
 When encrypting private keys, a passphrase must be provided.
 There are several options for providing the key.
 
-First, passphrases may be specified directly in the configuration file,
+Passphrases may be specified directly in the configuration file,
 both as a default passphrase applying to all keys,
 or specific passphrases for each key.
 Storing passphrases in cleartext in the configuration file obviously does little to protect the private keys if the configuration file is stored on the same machine.
 Either protect the configuration file or use an alternate method of providing passphrases.
 
-Second, by setting the passphrase to `true` in the configuration file (the binary value, not the string `"true"`),
+Alternatively, by setting the passphrase to `true` in the configuration file (the binary value, not the string `"true"`),
 the tool will attempt to obtain the passphrases at runtime.
 
-If the tool is run via a TTY device (e.g. manually in a terminal),
+Runtime passphrases may be provided on the command line, via an environment variable, via a text prompt, or via an input file.
+
+A command line passphrase is passed via the `--pass` option, e.g.
+
+    acmebot --pass "passphrase"
+
+To use an environment variable, set the passphrase in the `ACMEBOT_PASSPHRASE`.
+
+A passphrase passed at the command line or an environment variable will be used for every private key that has it's `key_passphrase` set to `true`.
+If different passphrases are desired for different keys,
+run the tool for each key specifying the private key name on the command line to restrict processing to that key.
+
+If the passphrase is not provided on the command line or an environment variable,
+and the tool is run via a TTY device (e.g. manually in a terminal),
 it will prompt the user for each passphrase as needed.
-Alternatively, the passphrases may be stored in a file, one per line, and input redirected from that file, e.g.
+Different passphrases may be provided for each private key (the same passphrase will be used for all key types of that key).
+
+Finally, the passphrases may be stored in a file, one per line, and input redirected from that file, e.g.
 
     acmebot < passphrase_file.txt
 
@@ -1347,13 +1362,6 @@ Passphrases passed via an input file will be used in the order that the private 
 If both certificates and private key sections are defined, the private keys will be processed first, then the certificates.
 You may wish to run the tool without the input file first to verify the private key order.
 
-The third option is to provide the passphrase via the command line, e.g.
-
-    acmebot --pass "passphrase"
-
-A passphrase passed at the command line will be used for each private key that has it's value set to `true`.
-If different passphrases are desired for different keys,
-run the tool for each key specifying the private key name on the command line to restrict processing to that key.
 
 
 ## Master/Slave Setup
