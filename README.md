@@ -52,13 +52,14 @@ Support for Apache and Nginx are provided by default, other servers may be added
 
 Using HPKP requires a second public key to provide a backup when private keys are changed.
 This tool automatically generates backup keys and switches to the pre-generated backup key when rolling over private keys.
-The tool also automatically maintains proper HPKP header information.
+Rolling over private keys can be done automatically and is scheculed independently of certificate expiration.
+Private key rollover is prevented in cases where insufficient time has passed to distribute backup HPKP pins.
 
 
 ### Parallel RSA and ECDSA Certificates
 
 This tool can generate both RSA and ECDSA certificates.
-By default it will generate and maintain both types of certificates.
+By default it will generate and maintain both types of certificates in parallel.
 
 
 ### Certificate Transparency / Signed Certificate Timestamp Support
@@ -84,7 +85,7 @@ This is useful for situations where a domain outside your immediate control has 
 
 This tool can automatically add and remove DNS records for dns-01 authorizations as well as TLSA records.
 Updates to a local server can be made via an external zone file processor, such as [bindtool],
-or to a remote DNS server via RFC 2136 dynamic DNS updates using nsupdate.
+or to a remote DNS server via RFC 2136 dynamic DNS updates using `nsupdate`.
 The choice between local and remote DNS updates can be made on a zone by zone basis.
 
 
@@ -175,7 +176,7 @@ The host name `"@"` is used for the name of the zone itself.
 
 By default, the tool will attempt dns-01 domain authorizations for every alternative name specified,
 using local DNS updates.
-See the later sections on configuring local or remote DNS updates.
+See the later sections on configuring [local](#configuring-local-dns-updates) or [remote](#configuring-remote-dns-updates) DNS updates.
 
 To use http-01 authorizations instead,
 configure the `http_challenges` section of the configuration file specifying a challenge directory for each fully qualified host name.
@@ -190,7 +191,7 @@ For example:
         }
     }
 
-See the HTTP Challenges section for more information.
+See the [HTTP Challenges](#http-challenges) section for more information.
 
 
 ### First Run
@@ -274,7 +275,7 @@ and therefore the intermediate certificate key type may not match the file name 
 
 ### Full Chain Certificate File
 
-If the `root_cert.<key-type>.pem` file is present (see Installation),
+If the `root_cert.<key-type>.pem` file is present (see [Installation](#installation)),
 then an additional certificate file will be generated in /etc/ssl/certs,
 named `<certificate-name>+root.<key-type>.pem` for each key type.
 This file will contain the certificate,
@@ -1153,7 +1154,7 @@ If the tool is not run on a machine also hosting a DNS server, then http-01 auth
 
 The use remote DNS udpates via RFC 2136 dynamic updates,
 configure a zone update key for each zone.
-See the Zone Update Keys section for more information.
+See the [Zone Update Keys](#zone-update-keys) section for more information.
 
 It is also necesary to have the `nsupdate` tool installed and the `nsupdate_command` configured in the `settings` configuration section.
 
@@ -1205,7 +1206,7 @@ or no longer match their associated private key files.
 
 If a backup private key has passed its expiration date,
 the tool will rollover the private key or emit a warning recommending that the private key be rolled over,
-see the Private Key Rollover section for more information.
+see the [Private Key Rollover](#private-key-rollover) section for more information.
 
 If a certificate needs to be renewed or has been modified,
 the certificate will be re-issued and reinstalled.
@@ -1368,7 +1369,7 @@ To create a master/slave setup,
 first install and configure the tool on the master server as normal.
 The master server may also issue certificates, but it is not necessary.
 
-Configure any required domain authorizations (see the Authorizations section) on the master and run the tool.
+Configure any required domain authorizations (see the [Authorizations](#authorizations) section) on the master and run the tool.
 
 Then install the tool on the slave server.
 It is not necessary to configure HTTP challenges or remote DNS update keys on the slave.
