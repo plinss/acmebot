@@ -328,10 +328,14 @@ class AcmeManager(object):
 
     def _log(self, *args):
         if (hasattr(self, 'config') and self._directory('log') and self._file_name('log') and self._setting('log_level')):
-            with self._open_file(self._file_path('log', self.script_name), 'a+', 0o640) as log_file:
-                log_file.write(self._message(*args))
+            log_file_path = self._file_path('log', self.script_name)
+            try:
+                with self._open_file(log_file_path, mode='a+', chmod=0o640, warn=False) as log_file:
+                    log_file.write(self._message(*args))
+            except Exception:
+                sys.stderr.write('Unable to write to log file ' + log_file_path + '\n')
 
-    def _makedir(self, dir_path, chmod=None):
+    def _makedir(self, dir_path, chmod=None, warn=True):
         if (not os.path.isdir(dir_path)):
             try:
                 os.makedirs(dir_path)
@@ -345,15 +349,17 @@ class AcmeManager(object):
                     try:
                         os.chmod(dir_path, chmod)
                     except PermissionError as error:
-                        self._warn('Unable to set directory mode for ', dir_path, '\n', error, '\n')
+                        if (warn):
+                            self._warn('Unable to set directory mode for ', dir_path, '\n', error, '\n')
             except Exception as error:
-                self._warn('Unable to create directory ', dir_path, '\n', error, '\n')
+                if (warn):
+                    self._warn('Unable to create directory ', dir_path, '\n', error, '\n')
 
-    def _open_file(self, file_path, mode='r', chmod=0o777):
+    def _open_file(self, file_path, mode='r', chmod=0o777, warn=True):
         def opener(file_path, flags):
             return os.open(file_path, flags, mode=chmod)
         if ((('w' in mode) or ('a' in mode)) and isinstance(file_path, str)):
-            self._makedir(os.path.dirname(file_path), chmod)
+            self._makedir(os.path.dirname(file_path), chmod=chmod, warn=warn)
         return open(file_path, mode, opener=opener)
 
     def _archive_file(self, file_type, file_path, archive_name='', archive_date=datetime.datetime.now()):
@@ -1093,9 +1099,12 @@ class AcmeManager(object):
         else:
             self._status('Client key not present, generating\n')
             self.client_key = jose.JWKRSA(key=rsa.generate_private_key(public_exponent=65537, key_size=4096, backend=default_backend()))
-            with self._open_file(client_key_path, 'w', 0o600) as client_key_file:
-                json.dump(self.client_key.fields_to_partial_json(), client_key_file)
-                self._note('Saved client key ', client_key_path, '\n')
+            try:
+                with self._open_file(client_key_path, 'w', 0o600) as client_key_file:
+                    json.dump(self.client_key.fields_to_partial_json(), client_key_file)
+                    self._note('Saved client key ', client_key_path, '\n')
+            except Exception:
+                self._error('Unable to save client key to ', client_key_path, '\n')
 
         try:
             user_agent = '{script}/{version} acme-python/{acme_version}'.format(script=self.script_name, version=self.script_version,
@@ -1121,7 +1130,10 @@ class AcmeManager(object):
         with FileTransaction('registration', registration_path, chmod=0o600) as transaction:
             transaction.write(self.registration.json_dumps())
             self._note('Saved registration ', registration_path, '\n')
-        self._commit_file_transactions([transaction], archive_name=None)
+        try:
+            self._commit_file_transactions([transaction], archive_name=None)
+        except Exception:
+            self._error('Unable to save registration to ', registration_path, '\n')
 
     def process_authorizations(self, private_key_names=[]):
         private_keys = self._config('private_keys')
