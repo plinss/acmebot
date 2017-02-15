@@ -514,9 +514,9 @@ class AcmeManager(object):
             response = DNS.Request().req(name=zone_name, qtype='SOA')
             if ('NOERROR' == response.header['status']):
                 return response.answers[0]['data'][0]
+            self._warn('Unable to find primary name server for ', zone_name, ' ', response.header['status'], '\n')
         except Exception as error:
             self._note('DNS Error: ', error, '\n')
-        self._warn('Unable to find primary name server for ', zone_name, ' ', response.header.status, '\n')
         return None
 
     def _get_name_servers(self, zone_name):
@@ -524,9 +524,9 @@ class AcmeManager(object):
             response = DNS.Request().req(name=zone_name, qtype='NS')
             if ('NOERROR' == response.header['status']):
                 return [answer['data'] for answer in response.answers]
+            self._warn('Unable to find name servers for ', zone_name, ' ', response.header['status'], '\n')
         except Exception as error:
             self._note('DNS Error: ', error, '\n')
-        self._warn('Unable to find name servers for ', zone_name, ' ', response.header.status, '\n')
         return []
 
     def _lookup_dns_challenge(self, name_server, domain_name):
@@ -589,6 +589,8 @@ class AcmeManager(object):
         usage = {'pkix-ta': '0', 'pkix-ee': '1', 'dane-ta': '2', 'dane-ee': '3'}
         updates = []
         name_server = self._get_primary_name_server(zone_name)
+        if (not name_server):
+            return
         for tlsa_data in tlsa_records:
             host_name = zone_name if ('@' == tlsa_data.host) else (tlsa_data.host + '.' + zone_name)
             if (tlsa_data.usage in usage):
