@@ -924,8 +924,13 @@ class AcmeManager(object):
                 pass
         return None
 
-    def params_present(self, file_name):
-        return os.path.isfile(self._file_path('param', file_name))
+    def params_present(self, file_name, dhparam_pem, ecparam_pem):
+        param_file_path = self._file_path('param', file_name)
+        if (os.path.isfile(param_file_path)):
+            with open(param_file_path, 'r') as param_file:
+                params = param_file.read()
+                return (((not dhparam_pem) or (dhparam_pem in params)) and ((not ecparam_pem) or (ecparam_pem in params)))
+        return False
 
     def load_params(self, file_name):
         try:
@@ -1555,7 +1560,8 @@ class AcmeManager(object):
                             ecparam_pem = self.generate_ecparam(ecparam_curve)
                             generated_params = True
 
-                    if ((dhparam_pem or ecparam_pem) and self._directory('param') and (generated_params or not self.params_present(certificate_name))):
+                    if ((dhparam_pem or ecparam_pem) and self._directory('param')
+                            and (generated_params or not self.params_present(certificate_name, dhparam_pem, ecparam_pem))):
                         transactions.append(self.save_params(certificate_name, dhparam_pem, ecparam_pem))
 
                 key_type = certificate_data.key_type
