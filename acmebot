@@ -4,7 +4,7 @@
 #
 # To install on Debian:
 # apt-get install build-essential libssl-dev libffi-dev python3-dev python3-pip
-# pip3 install acme py3dns
+# pip3 install -r requirements.txt
 
 import argparse
 import base64
@@ -1560,16 +1560,17 @@ class AcmeManager(object):
                 transactions.append(self.save_certificate('certificate', certificate_name, key_type, certificate_data.certificate,
                                                           chain=certificate_data.chain,
                                                           dhparam_pem=dhparam_pem, ecparam_pem=ecparam_pem))
-                if (root_certificates[key_type]):
+                if (root_certificates[key_type] and self._directory('full_certificate')):
                     transactions.append(self.save_certificate('full_certificate', certificate_name, key_type, certificate_data.certificate,
                                                               chain=certificate_data.chain, root_certificate=root_certificates[key_type],
                                                               dhparam_pem=dhparam_pem, ecparam_pem=ecparam_pem))
                 if (certificate_data.chain and self._directory('chain')):
                     transactions.append(self.save_chain(certificate_name, key_type, certificate_data.chain))
                 try:
-                    transactions.append(self.save_private_key('full_key', certificate_name, key_type, private_key_data.keys[key_type].key, key_cipher_data,
-                                                              certificate=certificate_data.certificate, chain=certificate_data.chain,
-                                                              dhparam_pem=dhparam_pem, ecparam_pem=ecparam_pem))
+                    if (self._directory('full_key')):
+                        transactions.append(self.save_private_key('full_key', certificate_name, key_type, private_key_data.keys[key_type].key, key_cipher_data,
+                                                                  certificate=certificate_data.certificate, chain=certificate_data.chain,
+                                                                  dhparam_pem=dhparam_pem, ecparam_pem=ecparam_pem))
                 except PrivateKeyError as error:
                     self._warn('Unable to encrypt private key ', error, '\n')
                     continue
