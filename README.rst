@@ -495,7 +495,7 @@ All of these need only be present when the desired value is different from the d
 * ``ocsp_must_staple`` specifies if the OCSP Must-Staple extension is added to certificates.
   The default value is ``false``.
 * ``ct_submit_logs`` specifies the list of certificate transparency logs to submit certificates to.
-  The default value is ``["google-icarus"]``, which is the log that Let's Encrypt submits to.
+  The default value is ``["google-icarus", "google-pilot"]``.
 * ``renewal_days`` specifies the number of days before expiration when the tool will attempt to renew a certificate.
   The default value is ``30``.
 * ``expiration_days`` specifies the number of days that private keys should be used for.
@@ -544,7 +544,7 @@ Example::
             "pin_subdomains": true,
             "hpkp_report_uri": null,
             "ocsp_must_staple": false,
-            "ct_submit_logs": ["google_icarus"],
+            "ct_submit_logs": ["google_icarus", "google_pilot"],
             "renewal_days": 30,
             "expiration_days": 730,
             "auto_rollover": false,
@@ -765,7 +765,7 @@ Example::
                 "pin_subdomains": true,
                 "hpkp_report_uri": null,
                 "ocsp_must_staple": false,
-                "ct_submit_logs": ["google_icarus"],
+                "ct_submit_logs": ["google_icarus", "google_pilot"],
             }
         }
     }
@@ -805,7 +805,7 @@ Example::
                         "dhparam_size": 2048,
                         "ecparam_curve": "secp384r1",
                         "ocsp_must_staple": true,
-                        "ct_submit_logs": ["google_icarus"],
+                        "ct_submit_logs": ["google_icarus", "google_pilot"],
                     },
                     "mail.example.com": {
                         "alt_names": {

@@ -167,7 +167,7 @@ class AcmeManager(object):
                 'pin_subdomains': True,
                 'hpkp_report_uri': None,
                 'ocsp_must_staple': False,
-                'ct_submit_logs': ['google_icarus'],
+                'ct_submit_logs': ['google_icarus', 'google_pilot'],
                 'renewal_days': 30,
                 'expiration_days': 730,
                 'auto_rollover': False,

@@ -17,7 +17,7 @@
         "pin_subdomains": true,
         "hpkp_report_uri": null,
         "ocsp_must_staple": false,
-        "ct_submit_logs": ["google_icarus"],
+        "ct_submit_logs": ["google_icarus", "google_pilot"],
         "renewal_days": 30,
         "expiration_days": 730,
         "auto_rollover": false,
