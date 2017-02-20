@@ -1,4 +1,5 @@
 appdirs>=1.4.0
+pyparsing>=2.1.10
 packaging>=16.8
 pyOpenSSL>=16.2
 py3dns>=3.1.0
