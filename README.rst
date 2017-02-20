@@ -223,7 +223,7 @@ For the first run you may wish to select verbose output to see exactly what the 
 If all goes well,
 the tool will generate a public/private key pair used for client authentication to the certificate authority,
 register an account with the certificate authority,
-automatically accept the certificate authority's terms of service,
+prompt to accept the certificate authority's terms of service,
 obtain authorizations for each configured domain name,
 generate primary private keys as needed for the configured certificates,
 issue certificates,

@@ -1136,7 +1136,17 @@ class AcmeManager(object):
         else:
             self._note('Registering client\n')
             self.registration = self.acme_client.register(messages.NewRegistration.from_data(email=self._account('email')))
-            self._note('Auto-accepting TOS: ', self.registration.terms_of_service, '\n')
+            if (self.registration.terms_of_service):
+                if (sys.stdin.isatty()):
+                    self._status('ACME service has the following terms of service:\n', self.registration.terms_of_service, '\n')
+                    answer = input('Accept? (Y/n) ')
+                    if (answer and not answer.lower().startswith('y')):
+                        self._archive_file('client', client_key_path)
+                        self._archive_file('client', registration_path)
+                        self._error('Terms of service rejected.\n')
+                    self._note('Terms of service accepted.\n')
+                else:
+                    self._note('Auto-accepting TOS: ', self.registration.terms_of_service, '\n')
             self.acme_client.agree_to_tos(self.registration)
             self.registration = self.acme_client.query_registration(self.registration)   # get agreement info
         with FileTransaction('registration', registration_path, chmod=0o600) as transaction:
