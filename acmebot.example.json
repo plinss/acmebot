@@ -159,7 +159,7 @@
             "pin_subdomains": true,
             "hpkp_report_uri": null,
             "ocsp_must_staple": false,
-            "ct_submit_logs": ["google_icarus"]
+            "ct_submit_logs": ["google_icarus", "google_pilot"]
         }
     },
     "private_keys": {
@@ -188,7 +188,7 @@
                     "ecparam_curve": "secp384r1",
                     "key_types": ["rsa", "ecdsa"],
                     "ocsp_must_staple": false,
-                    "ct_submit_logs": ["google_icarus"],
+                    "ct_submit_logs": ["google_icarus", "google_pilot"]
                 }
             },
             "key_types": ["rsa", "ecdsa"],
