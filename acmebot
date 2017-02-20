@@ -89,12 +89,17 @@ class FileTransaction(object):
 class AcmeManager(object):
     @classmethod
     def Run(cls):
+        manager = None
         try:
             manager = cls()
             manager.run()
-            del manager
         except AcmeError:
             pass
+        if (manager):
+            try:
+                del manager
+            except Exception:
+                pass
 
     def __init__(self):
         self.script_dir = os.path.dirname(os.path.realpath(__file__))
