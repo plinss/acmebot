@@ -504,15 +504,25 @@ class AcmeManager(object):
             domain_names.append(zone_name if ('@' == host_name) else (host_name + '.' + zone_name))
         return domain_names
 
-    def _reload_zone(self, zone_name):
+    def _reload_zone(self, zone_name, critical=True):
+        if (not self._setting('reload_zone_command')):
+            if (critical):
+                self._error('reload_zone_command not configured and needed for local DNS updates, either configure local DNS updates or switch to http authorizations\n')
+            return
         try:
             subprocess.check_output([self._setting('reload_zone_command'), zone_name], stderr=subprocess.STDOUT)
             self._debug('Reloading zone ', zone_name, '\n')
             time.sleep(2)
         except subprocess.CalledProcessError as error:
-            self._error('Failed to reload zone ', zone_name, ', code: ', error.returncode, '\n', error.output, '\n')
+            if (critical):
+                self._error('Failed to reload zone ', zone_name, ', code: ', error.returncode, '\n', error.output, '\n')
+            else:
+                self._note('Failed to reload zone ', zone_name, ', code: ', error.returncode, '\n', error.output, '\n')
         except Exception as error:
-            self._error('Failed to reload zone ', zone_name, '\n', error, '\n')
+            if (critical):
+                self._error('Failed to reload zone ', zone_name, '\n', error, '\n')
+            else:
+                self._note('Failed to reload zone ', zone_name, '\n', error, '\n')
 
     def _get_primary_name_server(self, zone_name):
         try:
@@ -1619,7 +1629,7 @@ class AcmeManager(object):
                 self._warn('Unable to install keys and certificates for ', private_key_name, '\n', error, '\n')
 
         for zone_name in updated_key_zones:
-            self._reload_zone(zone_name)
+            self._reload_zone(zone_name, critical=False)
 
     def revoke_certificates(self, private_key_names):
         private_keys = self._config('private_keys')
@@ -1687,7 +1697,7 @@ class AcmeManager(object):
                 self._warn(private_key_name, ' is not a configured private key\n')
 
         for zone_name in updated_key_zones:
-            self._reload_zone(zone_name)
+            self._reload_zone(zone_name, critical=False)
         for zone_name in updated_tlsa_zones:
             self._remove_tlsa_records(zone_name, self._zone_key(zone_name), updated_tlsa_zones[zone_name])
 

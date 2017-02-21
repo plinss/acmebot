@@ -522,6 +522,7 @@ All of these need only be present when the desired value is different from the d
   You can substitute the URL for Let's Encrypt's staging environment or another certificate authority.
 * ``reload_zone_command`` specifies the command to execute to reload local DNS zone information.
   When using `bindtool`_ the ``"reload-zone.sh"`` script provides this service.
+  If not using local DNS updates, you may set this to ``null`` to avoid warnings.
 * ``nsupdate_command`` specifies the command to perform DNS updates.
   The default value is ``"/usr/bin/nsupdate"``.
 
