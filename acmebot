@@ -507,7 +507,8 @@ class AcmeManager(object):
     def _reload_zone(self, zone_name, critical=True):
         if (not self._setting('reload_zone_command')):
             if (critical):
-                self._error('reload_zone_command not configured and needed for local DNS updates, either configure local DNS updates or switch to http authorizations\n')
+                self._error('reload_zone_command not configured and needed for local DNS updates, ',
+                            'either configure local DNS updates or switch to http authorizations\n')
             return
         try:
             subprocess.check_output([self._setting('reload_zone_command'), zone_name], stderr=subprocess.STDOUT)
@@ -1099,8 +1100,10 @@ class AcmeManager(object):
                 self._error('No certificates defined for private key ', private_key_name, '\n')
             certificate_key_types = set()
             for certificate_name in key_certificates:
+                common_name = key_certificates[certificate_name].get('common_name', certificate_name)
+                if ('alt_names' not in key_certificates[certificate_name]):
+                    private_keys[private_key_name]['certificates'][certificate_name]['alt_names'] = {common_name: ['@']}
                 for zone_name in key_certificates[certificate_name].get('alt_names', {}):
-                    common_name = key_certificates[certificate_name].get('common_name', certificate_name)
                     if (common_name in self._get_domain_names(key_certificates[certificate_name]['alt_names'], zone_name)):
                         break
                 else:

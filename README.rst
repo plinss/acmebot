@@ -688,11 +688,12 @@ The name of each certificate is used as the name of the certificate files.
 * ``common_name`` specifies the common name for the certificate.
   If omitted, the name of the certificate will be used.
 * ``alt_names`` specifies the set of subject alternative names for the certificate.
-  This must be specified and the common name of the certificate must be included as one of the alternative names.
+  If specified, the common name of the certificate must be included as one of the alternative names.
   The alternative names are specified as a list of host names per DNS zone,
   so that associated DNS updates happen in the correct zone.
-  The zone name may be used directly by specifying ``"@"``.
+  The zone name may be used directly by specifying ``"@"`` for the host name.
   Multiple zones may be specified.
+  The default value is ``{ common_name: ["@"] }``.
 * ``services`` specifies the list of services to be reloaded when the certificate is issued, renewed, or modified.
   This may be omitted.
 * ``dhparam_size`` specifies the number of bits to use for custom Diffie-Hellman paramaters for the certificate.
