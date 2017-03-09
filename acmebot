@@ -197,6 +197,7 @@ class AcmeManager(object):
                 'chain': '/etc/ssl/certs',
                 'param': '/etc/ssl/params',
                 'challenge': '/etc/ssl/challenges',
+                'http_challenge': None,
                 'hpkp': '/etc/ssl/hpkp',
                 'sct': '/etc/ssl/scts/{name}/{key_type}',
                 'update_key': '/etc/ssl/update_keys',
@@ -466,8 +467,13 @@ class AcmeManager(object):
     def _service(self, service_name):
         return self._config('services', service_name)
 
-    def _http_challenge_directory(self, domain_name):
-        return self._config('http_challenges', domain_name)
+    def _http_challenge_directory(self, domain_name, zone_name):
+        if (domain_name in self.config.get('http_challenges', {})):
+            return self._config('http_challenges', domain_name)
+        http_challenge_directory = self._directory('http_challenge')
+        if (http_challenge_directory):
+            host_name = domain_name[0:-len(zone_name)].strip('.') or '.'
+            return http_challenge_directory.format(fqdn=domain_name, zone=zone_name, host=host_name)
 
     def _zone_key(self, zone_name):
         key_data = self._config('zone_update_keys', zone_name)
@@ -1236,7 +1242,7 @@ class AcmeManager(object):
             zone_responses = {}
             for domain_name in domain_challenges[zone_name]:
                 if (domain_name in authorization_resources):
-                    http_challenge_directory = self._http_challenge_directory(domain_name)
+                    http_challenge_directory = self._http_challenge_directory(domain_name, zone_name)
                     if (http_challenge_directory):
                         challenge_types[domain_name] = 'http-01'
                         challenge = self._get_challenge(authorization_resources[domain_name], challenge_types[domain_name])

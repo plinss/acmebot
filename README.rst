@@ -593,6 +593,8 @@ All of these need only be present when the desired value is different from the d
   Paramater files may be omitted by setting this to ``null``.
 * ``challenge`` specifies the directory to store ACME dns-01 challenge files.
   The default value is ``"/etc/ssl/challenge"``.
+* ``http_challenge`` specifies the directory to store ACME http-01 challenge files.
+  The default value is ``null``.
 * ``hpkp`` specifies the directory to store HPKP header files.
   The default value is ``"/etc/ssl/hpkp"``.
   HPKP header files may be turned off by setting this to ``null``.
@@ -624,6 +626,7 @@ Example::
             "chain": "/etc/ssl/certs",
             "param": "/etc/ssl/params",
             "challenge": "/etc/ssl/challenges",
+            "http_challenge": "/var/www/{zone}/{host}/.well-known/acme-challenge",
             "hpkp": "/etc/ssl/hpkp",
             "sct": "/etc/ssl/scts/{name}/{key_type}",
             "update_key": "/etc/ssl/update_keys",
@@ -635,6 +638,9 @@ Example::
 Directory values are treated as Python format strings,
 fields available for directories are: ``name``, ``key_type``, ``suffix``, ``server``.
 The ``name`` field is the name of the private key or certificate.
+The ``"http_challenge"`` directory uses the fields: ``zone``, ``host``, and ``fqdn``, 
+for the zone name, host name (without the zone), and the fully qualified domain name respectively.
+The ``host`` value will be ``"."`` if the fqdn is the same as the zone name.
 
 
 Services
@@ -975,7 +981,8 @@ By default, the tool will attempt dns-01 domain authorizations for every alterna
 using local or remote DNS updates.
 
 To use http-01 authorizations instead,
-configure the ``http_challenges`` section of the configuration file specifying a challenge directory for each fully qualified domain name.
+configure the ``http_challenges`` section of the configuration file specifying a challenge directory for each fully qualified domain name,
+or configure a ``http_challenge`` directory.
 
 It is possible to mix usage of dns-01 and http-01 domain authorizations on a host by host basis,
 simply specify a http challenge directory only for those hosts requiring http-01 authentication.
@@ -998,6 +1005,23 @@ files placed in ``/var/www/htdocs/.well-known/acme-challenge`` must be publicly 
 and
 ``http://www.example.com/.well-known/acme-challenge/file-name``
 
+Alternatively, if your are primarily using http-01 authorizations and all challenge directories have a similar path,
+you may configure a single ``http_challenge`` directory using a python format string with the fields ``zone``, ``host``, and ``fqdn``.
+
+Example::
+
+    {
+        ...
+        "directories": {
+            "http_challenge": "/var/www/{zone}/{host}/.well-known/acme-challenge"
+        },
+        ...
+    }
+
+If an ``http_challenge`` directory is configured,
+all domain authorizations will default to http-01.
+To use dns-01 authorizations for selected domain names, 
+add an ``http_challenges`` entry configured with a ``null`` value.
 
 Zone Update Keys
 ----------------

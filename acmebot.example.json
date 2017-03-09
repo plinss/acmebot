@@ -41,6 +41,7 @@
         "chain": "/etc/ssl/certs",
         "param": "/etc/ssl/params",
         "challenge": "/etc/ssl/challenges",
+        "http_challenge": null,
         "hpkp": "/etc/ssl/hpkp",
         "sct": "/etc/ssl/scts/{name}/{key_type}",
         "update_key": "/etc/ssl/update_keys",
