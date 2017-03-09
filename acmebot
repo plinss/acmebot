@@ -61,13 +61,14 @@ class PrivateKeyError(Exception):
 
 class FileTransaction(object):
     __slots__ = ['file', 'temp_file_path', 'file_type', 'file_path', 'chmod', 'timestamp']
+    tempdir = None
 
     def __init__(self, file_type, file_path, chmod=None, timestamp=None, mode='w'):
         self.file_type = file_type
         self.file_path = file_path
         self.chmod = chmod
         self.timestamp = timestamp
-        temp_file_descriptor, self.temp_file_path = tempfile.mkstemp()
+        temp_file_descriptor, self.temp_file_path = tempfile.mkstemp(dir=FileTransaction.tempdir)
         self.file = open(temp_file_descriptor, mode)
 
     def __del__(self):
@@ -199,7 +200,8 @@ class AcmeManager(object):
                 'hpkp': '/etc/ssl/hpkp',
                 'sct': '/etc/ssl/scts/{name}/{key_type}',
                 'update_key': '/etc/ssl/update_keys',
-                'archive': '/etc/ssl/archive'
+                'archive': '/etc/ssl/archive',
+                'temp': None
             },
             'key_type_suffixes': {
                 'rsa': '.rsa',
@@ -1065,6 +1067,12 @@ class AcmeManager(object):
         req.sign(private_key, 'sha256')
         return req
 
+    def _device_id(self, directory):
+        directory = os.path.abspath(directory)
+        while (not os.path.exists(directory)):
+            directory = os.path.dirname(directory)
+        return os.stat(directory).st_dev
+
     def _validate_config(self):
         for section_name, default_section in self._config_defaults.items():
             if (section_name not in self.config):
@@ -1073,6 +1081,14 @@ class AcmeManager(object):
                 for key, value in default_section.items():
                     if (key not in self.config[section_name]):
                         self.config[section_name][key] = value
+
+        temp_device = self._device_id(self._directory('temp') if (self._directory('temp')) else tempfile.gettempdir())
+        for directory_type in ['resource', 'private_key', 'backup_key', 'full_key', 'certificate', 'full_certificate',
+                               'chain', 'param', 'challenge', 'hpkp', 'sct', 'archive']:
+            directory = self._directory(directory_type)
+            if (directory and (self._device_id(directory) != temp_device)):
+                self._error('Temp directory must be on same device as ', directory_type, ' directory\n')
+        FileTransaction.tempdir = self._directory('temp')
 
         private_keys = self.config.get('private_keys', collections.OrderedDict())
         if ('certificates' in self.config):     # convert bare certificate definitions to private key definitions

@@ -603,6 +603,10 @@ All of these need only be present when the desired value is different from the d
   The default value is ``"/etc/ssl/update_keys"``.
 * ``archive`` specifies the directory to store older versions of files that are replaced by this tool.
   The default value is ``"/etc/ssl/archive"``.
+* ``temp`` specifies the directory to write temporary files to.
+  A value of ``null`` results in using the system defined temp directory.
+  The temp directory must be on the same file system as the output file directories.
+  The default value is ``null``.
 
 Example::
 

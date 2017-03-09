@@ -44,7 +44,8 @@
         "hpkp": "/etc/ssl/hpkp",
         "sct": "/etc/ssl/scts/{name}/{key_type}",
         "update_key": "/etc/ssl/update_keys",
-        "archive": "/etc/ssl/archive"
+        "archive": "/etc/ssl/archive",
+        "temp": null
     },
     "key_type_suffixes": {
         "rsa": ".rsa",
