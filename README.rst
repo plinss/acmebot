@@ -377,7 +377,7 @@ create the file /etc/apache2/snippets/ssl/example.com containing::
     CTStaticSCTs          /etc/ssl/certs/example.com.ecdsa.pem /etc/ssl/scts/example.com/ecdsa    # requires mod_ssl_ct to be installed
     SSLCertificateKeyFile /etc/ssl/private/example.com.ecdsa.key
 
-    Header set Strict-Transport-Security "max-age=63072000"
+    Header always set Strict-Transport-Security "max-age=63072000"
     Include /etc/ssl/hpkp/example.com.apache
 
 and then in each host configuration using that certificate, simply add::
@@ -401,7 +401,7 @@ For Nginx the /etc/nginx/snippets/ssl/example.com file would contain::
     ssl_dhparam             /etc/ssl/params/example.com_param.pem;
     ssl_ecdh_curve secp384r1;
 
-    add_header Strict-Transport-Security "max-age=63072000";
+    add_header Strict-Transport-Security "max-age=63072000" always;
     include /etc/ssl/hpkp/example.com.nginx;
 
 and can be used via::
@@ -1139,7 +1139,7 @@ Example::
         ...
         "hpkp_headers": {
             "apache": "Header always set Public-Key-Pins \"{header}\"\n",
-            "nginx": "add_header Public-Key-Pins \"{header}\";\n"
+            "nginx": "add_header Public-Key-Pins \"{header}\" always;\n"
         },
         ...
     }

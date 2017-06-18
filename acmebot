@@ -223,7 +223,7 @@ class AcmeManager(object):
             },
             'hpkp_headers': {
                 'apache': 'Header always set Public-Key-Pins "{header}"\n',
-                'nginx': 'add_header Public-Key-Pins "{header}";\n'
+                'nginx': 'add_header Public-Key-Pins "{header}" always;\n'
             },
             'services': {
                 'apache': 'systemctl reload apache2',
@@ -535,7 +535,7 @@ class AcmeManager(object):
 
     def _get_primary_name_server(self, zone_name):
         try:
-            response = DNS.Request().req(name=zone_name, qtype='SOA')
+            response = DNS.Request().req(name=zone_name, qtype='SOA', protocol='tcp')
             if ('NOERROR' == response.header['status']):
                 return response.answers[0]['data'][0]
             self._warn('Unable to find primary name server for ', zone_name, ' ', response.header['status'], '\n')
@@ -545,7 +545,7 @@ class AcmeManager(object):
 
     def _get_name_servers(self, zone_name):
         try:
-            response = DNS.Request().req(name=zone_name, qtype='NS')
+            response = DNS.Request().req(name=zone_name, qtype='NS', protocol='tcp')
             if ('NOERROR' == response.header['status']):
                 return [answer['data'] for answer in response.answers]
             self._warn('Unable to find name servers for ', zone_name, ' ', response.header['status'], '\n')
@@ -555,7 +555,7 @@ class AcmeManager(object):
 
     def _lookup_dns_challenge(self, name_server, domain_name):
         try:
-            response = DNS.Request(server=name_server).req(name='_acme-challenge.' + domain_name, qtype='TXT')
+            response = DNS.Request(server=name_server).req(name='_acme-challenge.' + domain_name, qtype='TXT', protocol='tcp')
             if ('NOERROR' == response.header['status']):
                 return [answer['data'][0].decode('ascii') for answer in response.answers]
         except Exception as error:
