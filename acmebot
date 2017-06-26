@@ -1469,17 +1469,9 @@ class AcmeManager(object):
                 for zone_name in key_certificates[certificate_name]['alt_names']:
                     alt_names += self._get_domain_names(key_certificates[certificate_name]['alt_names'], zone_name)
 
-                missing_authorizations = [alt_name for alt_name in alt_names if (alt_name not in self.authorizations)]
-                if (missing_authorizations):
-                    self._status('Unable to issue certificate ', certificate_name, ' due to missing authorization(s) for: ',
-                                 ', '.join(missing_authorizations), '\n')
-                    if (rolled_private_key):
-                        issued_certificates = []    # do not partially install new certificates if private key changed
-                        break
-                    continue
-
                 common_name = key_certificates[certificate_name].get('common_name', certificate_name)
                 certificate_key_types = self._get_list(key_certificates[certificate_name], 'key_types', key_options.keys())
+                issue_certificate_key_types = []
                 for key_type in certificate_key_types:
                     if ((key_type not in keys) or (not keys[key_type].key)):
                         self._warn('No ', key_type.upper(), ' private key available for certificate ', certificate_name, '\n')
@@ -1520,7 +1512,19 @@ class AcmeManager(object):
                                         else:
                                             self._debug(key_type.upper(), ' certificate valid beyond renewal window\n')
                                             continue
+                    issue_certificate_key_types.append(key_type)
 
+                if (issue_certificate_key_types):
+                    missing_authorizations = [alt_name for alt_name in alt_names if (alt_name not in self.authorizations)]
+                    if (missing_authorizations):
+                        self._status('Unable to issue certificate ', certificate_name, ' due to missing authorization(s) for: ',
+                                     ', '.join(missing_authorizations), '\n')
+                        if (rolled_private_key):
+                            issued_certificates = []    # do not partially install new certificates if private key changed
+                            break
+                        continue
+
+                for key_type in issue_certificate_key_types:
                     csr = self.generate_csr(keys[key_type].key, common_name, alt_names,
                                             self._option(key_certificates[certificate_name], 'ocsp_must_staple'))
                     self._status('Requesting ', key_type.upper(), ' certificate for ', common_name,

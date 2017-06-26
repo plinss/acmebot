@@ -114,9 +114,14 @@ Installation
 
 Requires Python 3.4+ and the acme and py3dns packages.
 
-On Debian, these can be installed via::
+On Debian Jessie, these can be installed via::
 
     sudo apt-get install build-essential libssl-dev libffi-dev python3-dev python3-pip
+    sudo pip3 install -r requirements.txt
+
+On Debian Stretch::
+
+    sudo apt-get install python3-pip
     sudo pip3 install -r requirements.txt
 
 Clone this repository or download the ``acmebot`` file and install it on your server.
