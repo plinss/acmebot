@@ -977,6 +977,46 @@ class AcmeManager(object):
                 return (((not dhparam_pem) or (dhparam_pem in params)) and ((not ecparam_pem) or (ecparam_pem in params)))
         return False
 
+    def check_dhparam(self, dhparam_pem):
+        if (dhparam_pem):
+            try:
+                return (0 == subprocess.run(['openssl', 'dhparam', '-check'], input=dhparam_pem.encode('ascii'),
+                                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode)
+            except Exception:
+                pass
+        return False
+
+    def check_ecparam(self, ecparam_pem):
+        if (ecparam_pem):
+            try:
+                return (0 == subprocess.run(['openssl', 'ecparam', '-check'], input=ecparam_pem.encode('ascii'),
+                                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode)
+            except Exception:
+                pass
+        return False
+
+    def dhparam_size(self, dhparam_pem):
+        if (dhparam_pem):
+            try:
+                output = subprocess.check_output(['openssl', 'dhparam', '-text'], input=dhparam_pem.encode('ascii'), stderr=subprocess.DEVNULL)
+                match = re.match(r'\s*DH Parameters: \(([0-9]+) bit\)\n', output.decode('ascii'))
+                if (match):
+                    return int(match.group(1))
+            except Exception:
+                pass
+        return 0
+
+    def ecparam_curve(self, ecparam_pem):
+        if (ecparam_pem):
+            try:
+                output = subprocess.check_output(['openssl', 'ecparam', '-text'], input=ecparam_pem.encode('ascii'), stderr=subprocess.DEVNULL)
+                match = re.match(r'ASN1 OID: ([^\s]+)\n', output.decode('ascii'))
+                if (match):
+                    return match.group(1)
+            except Exception:
+                pass
+        return None
+
     def load_params(self, file_name):
         try:
             pem_data = None
@@ -997,6 +1037,10 @@ class AcmeManager(object):
                 dhparam_pem = (match.group(1) + '\n') if (match) else None
                 match = re.match(r'.*(-----BEGIN EC PARAMETERS-----.*-----END EC PARAMETERS-----)', pem_data, re.DOTALL)
                 ecparam_pem = (match.group(1) + '\n') if (match) else None
+                if (not self.check_dhparam(dhparam_pem)):
+                    dhparam_pem = None
+                if (not self.check_ecparam(ecparam_pem)):
+                    ecparam_pem = None
                 return (dhparam_pem, ecparam_pem)
         except Exception:
             pass
@@ -1587,6 +1631,7 @@ class AcmeManager(object):
 
             transactions = []
 
+            # save private keys
             key_cipher_data = self.key_cipher_data(private_key_name)
             try:
                 for key_type in private_key_data.key_options:
@@ -1602,6 +1647,7 @@ class AcmeManager(object):
                 self._warn('Unable to encrypt private key ', error, '\n')
                 continue
 
+            # verify and generate hpkp headers
             generated_hpkp_headers = False
             hpkp_days = self._option(private_keys[private_key_name], 'hpkp_days')
             if (0 < hpkp_days) and (self._directory('hpkp')):
@@ -1617,32 +1663,57 @@ class AcmeManager(object):
                     transactions += self.save_hpkp_headers(private_key_name, keys, hpkp_days, pin_subdomains, hpkp_report_uri)
                     generated_hpkp_headers = True
 
-            processed_params = set()
+            # verify DH and EC params for all certificates
+            key_certificates = private_keys[private_key_name].get('certificates', {})
+            certificate_params = {}
+            for certificate_name in key_certificates:
+                generated_params = False
+                dhparam_pem, ecparam_pem = self.load_params(certificate_name) if (not private_key_data.rolled_key) else (None, None)
+                hold_dhparam_pem = dhparam_pem
+                hold_ecparam_pem = ecparam_pem
+
+                dhparam_size = self._option(key_certificates[certificate_name], 'dhparam_size')
+                if (dhparam_pem and dhparam_size and (dhparam_size != self.dhparam_size(dhparam_pem))):
+                    self._status('Diffie-Hellman parameters for ', certificate_name, ' are not ', dhparam_size, ' bits\n')
+                    dhparam_pem = None
+                if ((not dhparam_pem) and (dhparam_size)):
+                    self._status('Generating Diffie-Hellman parameters for ', certificate_name, '\n')
+                    dhparam_pem = self.generate_dhparam(dhparam_size)
+                    if (dhparam_pem):
+                        generated_params = True
+                    else:
+                        self._status('Diffie-Hellman parameters generation failed for ', dhparam_size, ' bits\n')
+                        dhparam_pem = hold_dhparam_pem
+
+                ecparam_curve = self._option(key_certificates[certificate_name], 'ecparam_curve')
+                if (ecparam_pem and ecparam_curve and (ecparam_curve != self.ecparam_curve(ecparam_pem))):
+                    self._status('Elliptical curve parameters for ', certificate_name, ' are not curve ', ecparam_curve, '\n')
+                    ecparam_pem = None
+                if ((not ecparam_pem) and (ecparam_curve)):
+                    self._status('Generating elliptical curve parameters for ', certificate_name, '\n')
+                    ecparam_pem = self.generate_ecparam(ecparam_curve)
+                    if (ecparam_pem):
+                        generated_params = True
+                    else:
+                        self._status('Elliptical curve parameters generation failed for curve ', ecparam_curve, '\n')
+                        ecparam_pem = hold_ecparam_pem
+
+                if ((dhparam_pem or ecparam_pem) and self._directory('param')
+                        and (generated_params or not self.params_present(certificate_name, dhparam_pem, ecparam_pem))):
+                    transactions.append(self.save_params(certificate_name, dhparam_pem, ecparam_pem))
+                certificate_params[certificate_name] = (dhparam_pem, ecparam_pem, generated_params)
+
+            # save issued certificates
+            saved_certificates = {}
             for certificate_data in private_key_data.issued_certificates:
                 certificate_name = certificate_data.certificate_name
-                if (certificate_name not in processed_params):
-                    processed_params.add(certificate_name)
-
-                    generated_params = False
-                    dhparam_pem, ecparam_pem = self.load_params(certificate_name) if (not private_key_data.rolled_key) else (None, None)
-                    if (not dhparam_pem):
-                        dhparam_size = self._option(certificate_data.config, 'dhparam_size')
-                        if (dhparam_size):
-                            self._status('Generating Diffie-Hellman parameters for ', certificate_name, '\n')
-                            dhparam_pem = self.generate_dhparam(dhparam_size)
-                            generated_params = True
-                    if (not ecparam_pem):
-                        ecparam_curve = self._option(certificate_data.config, 'ecparam_curve')
-                        if (ecparam_curve):
-                            self._status('Generating elliptical curve parameters for ', certificate_name, '\n')
-                            ecparam_pem = self.generate_ecparam(ecparam_curve)
-                            generated_params = True
-
-                    if ((dhparam_pem or ecparam_pem) and self._directory('param')
-                            and (generated_params or not self.params_present(certificate_name, dhparam_pem, ecparam_pem))):
-                        transactions.append(self.save_params(certificate_name, dhparam_pem, ecparam_pem))
+                dhparam_pem, ecparam_pem, generated_params = certificate_params[certificate_name]
 
                 key_type = certificate_data.key_type
+                if (certificate_name not in saved_certificates):
+                    saved_certificates[certificate_name] = []
+                saved_certificates[certificate_name].append(key_type)
+
                 transactions.append(self.save_certificate('certificate', certificate_name, key_type, certificate_data.certificate,
                                                           chain=certificate_data.chain,
                                                           dhparam_pem=dhparam_pem, ecparam_pem=ecparam_pem))
@@ -1661,20 +1732,53 @@ class AcmeManager(object):
                     self._warn('Unable to encrypt private key ', error, '\n')
                     continue
 
+            # save any generated params for certs not issued
+            for certificate_name in certificate_params:
+                dhparam_pem, ecparam_pem, generated_params = certificate_params[certificate_name]
+                if (generated_params):
+                    certificate_key_types = self._get_list(key_certificates[certificate_name], 'key_types', private_key_data.key_options.keys())
+                    for key_type in certificate_key_types:
+                        if ((not private_key_data.keys[key_type].key)
+                                or ((certificate_name in saved_certificates) and (key_type in saved_certificates[certificate_name]))):
+                            continue
+                        certificate = self.load_certificate('certificate', certificate_name, key_type)
+                        if (certificate):
+                            if (certificate_name not in saved_certificates):
+                                saved_certificates[certificate_name] = []
+                            saved_certificates[certificate_name].append(key_type)
+
+                            chain = self.load_chain(certificate_name, key_type)
+
+                            transactions.append(self.save_certificate('certificate', certificate_name, key_type, certificate,
+                                                                      chain=chain,
+                                                                      dhparam_pem=dhparam_pem, ecparam_pem=ecparam_pem))
+                            if (root_certificates[key_type] and self._directory('full_certificate')):
+                                transactions.append(self.save_certificate('full_certificate', certificate_name, key_type, certificate,
+                                                                          chain=chain, root_certificate=root_certificates[key_type],
+                                                                          dhparam_pem=dhparam_pem, ecparam_pem=ecparam_pem))
+                            try:
+                                if (self._directory('full_key')):
+                                    transactions.append(self.save_private_key('full_key', certificate_name, key_type,
+                                                                              private_key_data.keys[key_type].key, key_cipher_data,
+                                                                              certificate=certificate, chain=chain,
+                                                                              dhparam_pem=dhparam_pem, ecparam_pem=ecparam_pem))
+                            except PrivateKeyError as error:
+                                self._warn('Unable to encrypt private key ', error, '\n')
+                                continue
+
             try:
                 self._commit_file_transactions(transactions, archive_name=private_key_name)
                 if (private_key_data.generated_key or private_key_data.rolled_key or generated_backup_key):
                     self._status('Private keys for ', private_key_name, ' installed\n')
-                for certificate_data in private_key_data.issued_certificates:
-                    certificate_name = certificate_data.certificate_name
-                    self._status(certificate_data.key_type.upper(), ' certificate ', certificate_name, ' installed\n')
-                    self.update_services(self._get_list(certificate_data.config, 'services'))
-                    if (not self._setting('slave_mode')):
-                        for zone_name in certificate_data.config['alt_names']:
-                            if (not self._zone_key(zone_name)):
-                                updated_key_zones.add(zone_name)
+                for certificate_name in saved_certificates:
+                    for key_type in saved_certificates[certificate_name]:
+                        self._status(key_type.upper(), ' certificate ', certificate_name, ' installed\n')
+                        self.update_services(self._get_list(key_certificates[certificate_name], 'services'))
+                        if (not self._setting('slave_mode')):
+                            for zone_name in key_certificates[certificate_name]['alt_names']:
+                                if (not self._zone_key(zone_name)):
+                                    updated_key_zones.add(zone_name)
                 if (generated_backup_key or generated_hpkp_headers):    # reload services for all certificates
-                    key_certificates = private_keys[private_key_name].get('certificates', {})
                     for certificate_name in key_certificates:
                         self.update_services(self._get_list(key_certificates[certificate_name], 'services'))
 
