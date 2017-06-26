@@ -106,7 +106,7 @@ class AcmeManager(object):
     def __init__(self):
         self.script_dir = os.path.dirname(os.path.realpath(__file__))
         self.script_name = os.path.basename(__file__)
-        self.script_version = '1.5'
+        self.script_version = '1.5.1'
 
         argparser = argparse.ArgumentParser(description='ACME Certificate Manager')
         argparser.add_argument('--version', action='version', version='%(prog)s ' + self.script_version)
@@ -980,8 +980,10 @@ class AcmeManager(object):
     def check_dhparam(self, dhparam_pem):
         if (dhparam_pem):
             try:
-                return (0 == subprocess.run(['openssl', 'dhparam', '-check'], input=dhparam_pem.encode('ascii'),
-                                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode)
+                openssl = subprocess.Popen(['openssl', 'dhparam', '-check'], stdin=subprocess.PIPE,
+                                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                openssl.communicate(input=dhparam_pem.encode('ascii'))
+                return (0 == openssl.returncode)
             except Exception:
                 pass
         return False
@@ -989,8 +991,10 @@ class AcmeManager(object):
     def check_ecparam(self, ecparam_pem):
         if (ecparam_pem):
             try:
-                return (0 == subprocess.run(['openssl', 'ecparam', '-check'], input=ecparam_pem.encode('ascii'),
-                                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode)
+                openssl = subprocess.Popen(['openssl', 'ecparam', '-check'], stdin=subprocess.PIPE,
+                                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                openssl.communicate(input=ecparam_pem.encode('ascii'))
+                return (0 == openssl.returncode)
             except Exception:
                 pass
         return False
