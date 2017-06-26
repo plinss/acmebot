@@ -522,6 +522,10 @@ All of these need only be present when the desired value is different from the d
   The default value is ``30``.
 * ``authorization_delay`` specifies the number of seconds to wait between authorization checks.
   The default value is ``10``.
+* ``min_run_delay`` specifies the minimum number of seconds to wait if the ``--randomwait`` command line option is present.
+  The default value is ``300``.
+* ``max_run_delay`` specifies the maximum number of seconds to wait if the ``--randomwait`` command line option is present.
+  The default value is ``3600``.
 * ``acme_directory_url`` specifies the primary URL for the ACME service.
   The default value is ``"https://acme-v01.api.letsencrypt.org/directory"``, the Let's Encrypt production API.
   You can substitute the URL for Let's Encrypt's staging environment or another certificate authority.
@@ -1317,13 +1321,17 @@ it is recommended that the tool be run at least once per day via a cron job.
 By default, the tool only generates output when actions are taken making it cron friendly.
 Normal output can be supressed via the ``--quiet`` command line option.
 
+To prevent multiple instances running at the same time,
+a random wait can be introduced via the ``--randomwait`` command line option.
+The minimum and maximum wait times can be controlled via the ``min_run_delay`` and ``max_run_delay`` settings.
+
 Example cron entry, in file /etc/cron.d/acmebot::
 
     MAILTO=admin@example.com
 
-    20 0 * * * root /usr/local/bin/acmebot
+    20 0 * * * root /usr/local/bin/acmebot --randomwait
 
-This will run the tool as root every day at 20 minutes past midnight.
+This will run the tool as root every day at 20 minutes past midnight plus a random delay of five minutes to an hour.
 Any output will be mailed to admin@example.com
 
 

@@ -25,6 +25,8 @@
         "dns_lookup_delay": 10,
         "max_authorization_attempts": 30,
         "authorization_delay": 10,
+        "min_run_delay": 300,
+        "max_run_delay": 3600,
         "acme_directory_url": "https://acme-v01.api.letsencrypt.org/directory",
         "reload_zone_command": "/etc/bind/reload-zone.sh",
         "nsupdate_command": "/usr/bin/nsupdate"

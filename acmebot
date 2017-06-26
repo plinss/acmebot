@@ -18,6 +18,7 @@ import heapq
 import json
 import os
 import pwd
+import random
 import re
 import struct
 import subprocess
@@ -122,6 +123,9 @@ class AcmeManager(object):
         argparser.add_argument('-c', '--config',
                                dest='config_path', default=self.script_name + '.json', metavar='CONFIG_PATH',
                                help='Specify file path for config')
+        argparser.add_argument('-w', '--randomwait',
+                               action='store_true', dest='random_wait', default=False,
+                               help='Wait for a random time before executing')
         argparser.add_argument('-r', '--rollover',
                                action='store_true', dest='rollover', default=False,
                                help='Rollover private keys and Diffie-Hellman parameters')
@@ -181,6 +185,8 @@ class AcmeManager(object):
                 'dns_lookup_delay': 10,
                 'max_authorization_attempts': 30,
                 'authorization_delay': 10,
+                'min_run_delay': 300,
+                'max_run_delay': 3600,
                 'acme_directory_url': 'https://acme-v01.api.letsencrypt.org/directory',
                 'reload_zone_command': '/etc/bind/reload-zone.sh',
                 'nsupdate_command': '/usr/bin/nsupdate'
@@ -1836,6 +1842,14 @@ class AcmeManager(object):
         with self._open_file(pid_file_path, 'w') as pid_file:
             pid_file.write(str(os.getpid()))
         try:
+            if (self.args.random_wait):
+                delay_seconds = min(random.randrange(min(self._setting('min_run_delay'), self._setting('max_run_delay')),
+                                                     max(self._setting('min_run_delay'), self._setting('max_run_delay'))), 86400)
+                self._note('Waiting for ',
+                           (str(int(delay_seconds / 3600)) + ' hours ') if (delay_seconds > 3600) else '',
+                           (str(int((delay_seconds % 3600) / 60)) + ' minutes ') if (delay_seconds > 60) else '',
+                           str(delay_seconds % 60), ' seconds\n')
+                time.sleep(delay_seconds)
             self.connect_client()
             if (self.args.revoke):
                 if (not self.args.private_key_names):
