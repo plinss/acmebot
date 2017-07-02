@@ -78,6 +78,18 @@ The retrieved SCTs are suitable to be deilvered via a TLS extension,
 SCT TLS extension modules are available for `Apache <https://httpd.apache.org/docs/trunk/mod/mod_ssl_ct.html>`_ and `Nginx <https://github.com/grahamedgecombe/nginx-ct>`_.
 
 
+OCSP Response File Support
+--------------------------
+
+This tool automatically obtains and maintains OCSP response files for each configured certificate.
+These files may be used to serve stapled OCSP responses from your server without relying on the server's OCSP stapling mechanisms.
+Some servers, such as Nginx, obtain stapled OCSP responses lazily and cache the response in memory.
+When using the OCSP Must-Staple extension this can result in your server being unreachable until the OCSP response is refreshed,
+during OCSP responder outages, this can be a significant interval.
+Using OCSP responses from disk will alleviate this issue.
+Only OCSP responses with a "good" status will be stored.
+
+
 Encrypted Private Keys
 ----------------------
 
@@ -121,7 +133,7 @@ On Debian Jessie, these can be installed via::
 
 On Debian Stretch::
 
-    sudo apt-get install python3-pip
+    sudo apt-get install python3-pip libssl-dev libffi-dev
     sudo pip3 install -r requirements.txt
 
 Clone this repository or download the ``acmebot`` file and install it on your server.
@@ -248,7 +260,7 @@ File Location
 =============
 
 After a successful certificate issuance,
-up to seventeen files will be created per certificate.
+up to twenty one files will be created per certificate.
 
 The locations for these files can be controlled via the ``directories`` section of the configuration file.
 The default locations are used here for brevity.
@@ -343,8 +355,14 @@ Signed Certificate Timestamp (SCT) Files
 
 One additional file will be created for each key type and configured certificate transparency log in ``/etc/ssl/scts/<certificate-name>/<key-type>/<log-name>.sct``.
 These files contain SCT information in binary form suitable to be included in a TLS extension.
-By default, SCTs will be retrieved from the Google Icarus certificate transparency log,
-which is where Let's Encrypt submits issued certificates.
+By default, SCTs will be retrieved from the Google Icarus and Google Pilot certificate transparency logs.
+
+
+OCSP Response Files
+-------------------
+One OCSP response file will be created for each key type,
+in /etc/ssl/ocsp, named ``<certificate-name>.<key_type>.ocsp``.
+These files contain OCSP responses in binary form suitable to be used as stapled OCSP responses.
 
 
 Archive Directory
@@ -375,12 +393,12 @@ for example using Apache,
 create the file /etc/apache2/snippets/ssl/example.com containing::
 
     SSLCertificateFile    /etc/ssl/certs/example.com.rsa.pem
-    CTStaticSCTs          /etc/ssl/certs/example.com.rsa.pem /etc/ssl/scts/example.com/rsa        # requires mod_ssl_ct to be installed
     SSLCertificateKeyFile /etc/ssl/private/example.com.rsa.key
+    CTStaticSCTs          /etc/ssl/certs/example.com.rsa.pem /etc/ssl/scts/example.com/rsa        # requires mod_ssl_ct to be installed
 
     SSLCertificateFile    /etc/ssl/certs/example.com.ecdsa.pem
-    CTStaticSCTs          /etc/ssl/certs/example.com.ecdsa.pem /etc/ssl/scts/example.com/ecdsa    # requires mod_ssl_ct to be installed
     SSLCertificateKeyFile /etc/ssl/private/example.com.ecdsa.key
+    CTStaticSCTs          /etc/ssl/certs/example.com.ecdsa.pem /etc/ssl/scts/example.com/ecdsa    # requires mod_ssl_ct to be installed
 
     Header always set Strict-Transport-Security "max-age=63072000"
     Include /etc/ssl/hpkp/example.com.apache
@@ -391,17 +409,19 @@ and then in each host configuration using that certificate, simply add::
 
 For Nginx the /etc/nginx/snippets/ssl/example.com file would contain::
 
-    ssl_ct on;                                                      # requires nginx-ct module to be installed
+    ssl_ct on;                                                          # requires nginx-ct module to be installed
 
     ssl_certificate         /etc/ssl/certs/example.com.rsa.pem;
-    ssl_ct_static_scts      /etc/ssl/scts/example.com/rsa;          # requires nginx-ct module to be installed
     ssl_certificate_key     /etc/ssl/private/example.com.rsa.key;
+    ssl_ct_static_scts      /etc/ssl/scts/example.com/rsa;              # requires nginx-ct module to be installed
+    ssl_stapling_file       /etc/ssl/ocsp/example.com.rsa.ocsp;
 
-    ssl_certificate         /etc/ssl/certs/example.com.ecdsa.pem;   # requires nginx 1.11.0+ to use multiple certificates
-    ssl_ct_static_scts      /etc/ssl/scts/example.com/ecdsa;        # requires nginx-ct module to be installed
+    ssl_certificate         /etc/ssl/certs/example.com.ecdsa.pem;       # requires nginx 1.11.0+ to use multiple certificates
     ssl_certificate_key     /etc/ssl/private/example.com.ecdsa.key;
+    ssl_ct_static_scts      /etc/ssl/scts/example.com/ecdsa;            # requires nginx-ct module to be installed
+    ssl_stapling_file       /etc/ssl/ocsp/example.com.ecdsa.ocsp;       # requires nginx 1.13.3+ to use with multiple certificates
 
-    ssl_trusted_certificate /etc/ssl/certs/example.com+root.rsa.pem;
+    ssl_trusted_certificate /etc/ssl/certs/example.com+root.rsa.pem;    # not required if using ssl_stapling_file
 
     ssl_dhparam             /etc/ssl/params/example.com_param.pem;
     ssl_ecdh_curve secp384r1;
@@ -499,6 +519,8 @@ All of these need only be present when the desired value is different from the d
   If not null, the ``report-uri`` directive will be included in the HPKP headers.
 * ``ocsp_must_staple`` specifies if the OCSP Must-Staple extension is added to certificates.
   The default value is ``false``.
+* ``ocsp_responder_urls`` specifies the list of OCSP responders to use if a certificate doesn't provide them.
+  The default value is ``["http://ocsp.int-x3.letsencrypt.org"]``.
 * ``ct_submit_logs`` specifies the list of certificate transparency logs to submit certificates to.
   The default value is ``["google-icarus", "google-pilot"]``.
 * ``renewal_days`` specifies the number of days before expiration when the tool will attempt to renew a certificate.
@@ -554,6 +576,7 @@ Example::
             "pin_subdomains": true,
             "hpkp_report_uri": null,
             "ocsp_must_staple": false,
+            "ocsp_responder_urls": ["http://ocsp.int-x3.letsencrypt.org"],
             "ct_submit_logs": ["google_icarus", "google_pilot"],
             "renewal_days": 30,
             "expiration_days": 730,
@@ -562,6 +585,8 @@ Example::
             "dns_lookup_delay": 10,
             "max_authorization_attempts": 30,
             "authorization_delay": 10,
+            "min_run_delay": 300,
+            "max_run_delay": 3600,
             "acme_directory_url": "https://acme-v01.api.letsencrypt.org/directory",
             "reload_zone_command": "/etc/bind/reload-zone.sh",
             "nsupdate_command": "/usr/bin/nsupdate"
@@ -608,8 +633,11 @@ All of these need only be present when the desired value is different from the d
   The default value is ``"/etc/ssl/hpkp"``.
   HPKP header files may be turned off by setting this to ``null``.
 * ``sct`` specifies the directory to store Signed Certificate Timestamp files.
-  The default value id ``"/etc/ssl/scts/<certificate-name>/<key-type>"``.
+  The default value is ``"/etc/ssl/scts/<certificate-name>/<key-type>"``.
   SCT files may be turned off by setting this to ``null``.
+* ``ocsp`` specifies the directory to store OCSP response files.
+  The default value is ``"/etc/ssl/ocsp"``.
+  OCSP response files may be turned off by setting this to ``null``.
 * ``update_key`` specifies the directory to search for DNS update key files.
   The default value is ``"/etc/ssl/update_keys"``.
 * ``archive`` specifies the directory to store older versions of files that are replaced by this tool.
@@ -637,6 +665,7 @@ Example::
             "challenge": "/etc/ssl/challenges",
             "http_challenge": "/var/www/{zone}/{host}/.well-known/acme-challenge",
             "hpkp": "/etc/ssl/hpkp",
+            "ocsp": "/etc/ssl/ocsp/",
             "sct": "/etc/ssl/scts/{name}/{key_type}",
             "update_key": "/etc/ssl/update_keys",
             "archive": "/etc/ssl/archive"
@@ -759,6 +788,8 @@ The name of each certificate is used as the name of the certificate files.
   If not null, the ``report-uri`` directive will be included in the HPKP headers.
 * ``ocsp_must_staple`` specifies if the OCSP Must-Staple extension is added to certificates.
   The default value is the value specified in the ``settings`` section.
+* ``ocsp_responder_urls`` specifies the list of OCSP responders to use if a certificate doesn't provide them.
+  The default value is the value specified in the ``settings`` section.
 * ``ct_submit_logs`` specifies the list of certificate transparency logs to submit the certificate to.
   The default value is the value specified in the ``settings`` section.
 
@@ -786,7 +817,8 @@ Example::
                 "pin_subdomains": true,
                 "hpkp_report_uri": null,
                 "ocsp_must_staple": false,
-                "ct_submit_logs": ["google_icarus", "google_pilot"],
+                "ocsp_responder_urls": ["http://ocsp.int-x3.letsencrypt.org"],
+                "ct_submit_logs": ["google_icarus", "google_pilot"]
             }
         }
     }
@@ -1109,6 +1141,7 @@ The ``name`` field is the name of the private key or certificate.
 * ``param`` specifies the name of Diffie-Hellman parameter files.
 * ``challenge`` specifies the name of ACME challenge files used for local DNS updates.
 * ``hpkp`` specifies the name of HPKP header files.
+* ``ocsp`` specifies the name of OCSP response files.
 * ``sct`` specifies the name of SCT files.
 
 Example::
@@ -1125,6 +1158,7 @@ Example::
             "param": "{name}_param.pem",
             "challenge": "{name}",
             "hpkp": "{name}.{server}",
+            "ocsp": "{name}{suffix}.ocsp",
             "sct": "{ct_log_name}.sct"
         },
         ...
@@ -1332,7 +1366,13 @@ Example cron entry, in file /etc/cron.d/acmebot::
     20 0 * * * root /usr/local/bin/acmebot --randomwait
 
 This will run the tool as root every day at 20 minutes past midnight plus a random delay of five minutes to an hour.
-Any output will be mailed to admin@example.com
+Any output will be mailed to admin@example.com.
+
+If using OCSP response files, it may be desirable to refresh OCSP responses at a shorter interval.
+(Currently Let's Encrypt updates OCSP responses every three days.)
+To refresh OCSP responses every six hours, add the line:
+
+    20 6,12,18 * * * root /usr/local/bin/acmebot --ocsp --randomwait
 
 
 Output Options
@@ -1421,6 +1461,12 @@ Signed Certificate Timestamp Updates
 ------------------------------------
 
 Use of the ``--sct`` option on the command line will limit the tool to only verifying and updating configured Signed Certificate Timestamp files.
+
+
+OCSP Response Updates
+---------------------
+
+Use of the ``--ocsp`` option on the command line will limit the tool to only updating configured OCSP response files.
 
 
 Private Key Encryption

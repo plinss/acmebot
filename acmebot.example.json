@@ -17,6 +17,7 @@
         "pin_subdomains": true,
         "hpkp_report_uri": null,
         "ocsp_must_staple": false,
+        "ocsp_responder_urls": ["http://ocsp.int-x3.letsencrypt.org"],
         "ct_submit_logs": ["google_icarus", "google_pilot"],
         "renewal_days": 30,
         "expiration_days": 730,
@@ -45,6 +46,7 @@
         "challenge": "/etc/ssl/challenges",
         "http_challenge": null,
         "hpkp": "/etc/ssl/hpkp",
+        "ocsp": "/etc/ssl/ocsp/",
         "sct": "/etc/ssl/scts/{name}/{key_type}",
         "update_key": "/etc/ssl/update_keys",
         "archive": "/etc/ssl/archive",
@@ -65,6 +67,7 @@
         "param": "{name}_param.pem",
         "challenge": "{name}",
         "hpkp": "{name}.{server}",
+        "ocsp": "{name}{suffix}.ocsp",
         "sct": "{ct_log_name}.sct"
     },
     "hpkp_headers": {
@@ -163,6 +166,7 @@
             "pin_subdomains": true,
             "hpkp_report_uri": null,
             "ocsp_must_staple": false,
+            "ocsp_responder_urls": ["http://ocsp.int-x3.letsencrypt.org"],
             "ct_submit_logs": ["google_icarus", "google_pilot"]
         }
     },
@@ -192,6 +196,7 @@
                     "ecparam_curve": "secp384r1",
                     "key_types": ["rsa", "ecdsa"],
                     "ocsp_must_staple": false,
+                    "ocsp_responder_urls": ["http://ocsp.int-x3.letsencrypt.org"],
                     "ct_submit_logs": ["google_icarus", "google_pilot"]
                 }
             },

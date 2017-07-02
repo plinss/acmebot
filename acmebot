@@ -33,6 +33,9 @@ import OpenSSL
 
 from acme import client, jose, messages
 
+from asn1crypto import ocsp as asn1_ocsp
+from asn1crypto import x509 as asn1_x509
+
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import ec, rsa
 from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption, PrivateFormat, PublicFormat
@@ -106,7 +109,7 @@ class AcmeManager(object):
     def __init__(self):
         self.script_dir = os.path.dirname(os.path.realpath(__file__))
         self.script_name = os.path.basename(__file__)
-        self.script_version = '1.5.1'
+        self.script_version = '1.6'
 
         argparser = argparse.ArgumentParser(description='ACME Certificate Manager')
         argparser.add_argument('--version', action='version', version='%(prog)s ' + self.script_version)
@@ -147,6 +150,9 @@ class AcmeManager(object):
         argparser.add_argument('-s', '--sct',
                                action='store_true', dest='sct', default=False,
                                help='Update Signed Certificate Timestamps only')
+        argparser.add_argument('-o', '--ocsp',
+                               action='store_true', dest='ocsp', default=False,
+                               help='Update OCSP responses only')
         argparser.add_argument('-p', '--pass', nargs=1, default=False,
                                action='store', dest='passphrase', metavar='PASSPHRASE',
                                help='Passphrase for private keys')
@@ -177,6 +183,7 @@ class AcmeManager(object):
                 'pin_subdomains': True,
                 'hpkp_report_uri': None,
                 'ocsp_must_staple': False,
+                'ocsp_responder_urls': ['http://ocsp.int-x3.letsencrypt.org'],
                 'ct_submit_logs': ['google_icarus', 'google_pilot'],
                 'renewal_days': 30,
                 'expiration_days': 730,
@@ -205,6 +212,7 @@ class AcmeManager(object):
                 'challenge': '/etc/ssl/challenges',
                 'http_challenge': None,
                 'hpkp': '/etc/ssl/hpkp',
+                'ocsp': '/etc/ssl/ocsp/',
                 'sct': '/etc/ssl/scts/{name}/{key_type}',
                 'update_key': '/etc/ssl/update_keys',
                 'archive': '/etc/ssl/archive',
@@ -225,6 +233,7 @@ class AcmeManager(object):
                 'param': '{name}_param.pem',
                 'challenge': '{name}',
                 'hpkp': '{name}.{server}',
+                'ocsp': '{name}{suffix}.ocsp',
                 'sct': '{ct_log_name}.sct'
             },
             'hpkp_headers': {
@@ -456,6 +465,9 @@ class AcmeManager(object):
 
     def _setting(self, key):
         return self._config('settings', key)
+
+    def _setting_list(self, key):
+        return self._get_list(self.config.get('settings', {}), key)
 
     def _directory(self, file_type):
         return self._config('directories', file_type, '')
@@ -1083,6 +1095,8 @@ class AcmeManager(object):
                     self._warn('Unable to retrieve SCT from log ', ct_log_name, ' HTTP error: ', error.code, ' ', error.reason, '\n')
             except urllib.error.URLError as error:
                 self._warn('Unable to retrieve SCT from log ', ct_log_name, ' ', error.reason, '\n')
+            except Exception as error:
+                self._warn('Unable to retrieve SCT from log ', ct_log_name, ' ', error, '\n')
         else:
             self._warn('Unknown CT log: ', ct_log_name, '\n')
         return None
@@ -1120,6 +1134,53 @@ class AcmeManager(object):
 
     def archive_sct(self, file_name, key_type, ct_log_name, archive_name='', archive_date=None):
         self._archive_file('sct', self._file_path('sct', file_name, key_type, ct_log_name=ct_log_name), archive_name=archive_name, archive_date=archive_date)
+
+    def ocsp_response_this_update(self, ocsp_response):
+        if ('this_update' in ocsp_response.response_data['responses'][0]):
+            return datetime.datetime.strptime(str(ocsp_response.response_data['responses'][0]['this_update']), "%Y%m%d%H%M%SZ")
+        return None
+
+    def ocsp_response_next_update(self, ocsp_response):
+        if ('next_update' in ocsp_response.response_data['responses'][0]):
+            return datetime.datetime.strptime(str(ocsp_response.response_data['responses'][0]['next_update']), "%Y%m%d%H%M%SZ")
+        return None
+
+    def ocsp_response_status(self, ocsp_response):
+        return ocsp_response.response_data['responses'][0]['cert_status'].name
+
+    def fetch_ocsp_response(self, ocsp_url, ocsp_request):
+        request = urllib.request.Request(url=ocsp_url, data=ocsp_request.dump())
+        request.add_header('Content-Type', 'application/ocsp-request')
+        request.add_header('Accept', 'application/ocsp-response')
+        request.add_header('Host', urllib.parse.urlparse(ocsp_url).hostname)
+        try:
+            with urllib.request.urlopen(request) as response:
+                # XXX add validation of response
+                return asn1_ocsp.OCSPResponse.load(response.read())
+        except urllib.error.HTTPError as error:
+            if ((400 <= error.code) and (error.code < 500)):
+                self._warn('Unable to retrieve OCSP response from ', ocsp_url, ' HTTP error: ', error.code, ' ', error.reason, '\n', error.read(), '\n')
+            else:
+                self._warn('Unable to retrieve OCSP response from ', ocsp_url, ' HTTP error: ', error.code, ' ', error.reason, '\n')
+        except urllib.error.URLError as error:
+            self._warn('Unable to retrieve OCSP response from ', ocsp_url, ' ', error.reason, '\n')
+        except Exception as error:
+            self._warn('Unable to retrieve OCSP response from ', ocsp_url, ' ', error, '\n')
+        return None
+
+    def load_oscp_response(self, file_name, key_type):
+        try:
+            ocsp_file_path = self._file_path('ocsp', file_name, key_type)
+            with open(ocsp_file_path, 'rb') as ocsp_file:
+                return asn1_ocsp.OCSPResponse.load(ocsp_file.read())
+        except Exception:
+            pass
+        return None
+
+    def save_ocsp_response(self, file_name, key_type, ocsp_response):
+        with FileTransaction('ocsp', self._file_path('ocsp', file_name, key_type), chmod=0o640, mode='wb') as transaction:
+            transaction.write(ocsp_response.dump())
+        return transaction
 
     def generate_csr(self, private_key, common_name, alt_names=[], must_staple=False):
         req = OpenSSL.crypto.X509Req()
@@ -1951,6 +2012,100 @@ class AcmeManager(object):
             except Exception as error:
                 self._warn('Unable to save Signed Certificate Timestamps for ', private_key_name, '\n', error, '\n')
 
+    def update_ocsp_responses(self, private_key_names):
+        if (not self._directory('ocsp')):
+            return
+
+        root_certificates = self.load_root_certificates()
+        default_ocsp_responder_urls = self._setting_list('ocsp_responder_urls')
+
+        private_keys = self._config('private_keys')
+        for private_key_name in private_keys:
+            if (private_key_names and (private_key_name not in private_key_names)):
+                continue
+
+            key_options = self._get_key_options(private_keys[private_key_name])
+            if (not key_options):
+                self._warn('No configured private key types for ', private_key_name, '\n')
+                continue
+
+            transactions = []
+            key_certificates = private_keys[private_key_name].get('certificates', {})
+            for certificate_name in key_certificates:
+                certificate_key_types = self._get_list(key_certificates[certificate_name], 'key_types', key_options.keys())
+                for key_type in certificate_key_types:
+                    ocsp_response = self.load_oscp_response(certificate_name, key_type)
+                    if (ocsp_response and ('good' == self.ocsp_response_status(ocsp_response))):
+                        last_update = self.ocsp_response_this_update(ocsp_response)
+                        self._note('Have stapled OCSP response for ', key_type.upper(), ' certificate ', certificate_name,
+                                   ' updated at ', last_update.strftime('%Y-%m-%d %H:%M:%S UTC'), '\n')
+                    else:
+                        last_update = None
+
+                    certificate = self.load_certificate('certificate', certificate_name, key_type)
+                    asn1crypto_certificate = asn1_x509.Certificate.load(self._certificate_bytes(certificate))
+                    ocsp_urls = (asn1crypto_certificate.ocsp_urls
+                                 or self._get_list(key_certificates[certificate_name], 'ocsp_responder_urls', default_ocsp_responder_urls))
+                    if (ocsp_urls):
+                        chain = self.load_chain(certificate_name, key_type)
+                        issuer_certificate = chain[0] if (chain) else root_certificates[key_type]
+                        issuer_asn1_certificate = asn1_x509.Certificate.load(self._certificate_bytes(issuer_certificate))
+
+                        tbs_request = asn1_ocsp.TBSRequest({
+                            'request_list': [
+                                {
+                                    'req_cert': {
+                                        'hash_algorithm': {'algorithm': 'sha1'},
+                                        'issuer_name_hash': asn1crypto_certificate.issuer.sha1,
+                                        'issuer_key_hash': issuer_asn1_certificate.public_key.sha1,
+                                        'serial_number': asn1crypto_certificate.serial_number,
+                                    },
+                                    'single_request_extensions': None
+                                }
+                            ],
+                            'request_extensions': None  # [{'extn_id': 'nonce', 'critical': False, 'extn_value': os.urandom(16)}]
+                            # we don't appear to be getting the nonce back, so don't send it
+                        })
+                        ocsp_request = asn1_ocsp.OCSPRequest({
+                            'tbs_request': tbs_request,
+                            'optional_signature': None
+                        })
+
+                        for ocsp_url in ocsp_urls:
+                            ocsp_response = self.fetch_ocsp_response(ocsp_url, ocsp_request)
+                            if (ocsp_response):
+                                if ('successful' == ocsp_response['response_status'].native):
+                                    ocsp_status = self.ocsp_response_status(ocsp_response)
+                                    this_update = self.ocsp_response_this_update(ocsp_response)
+                                    self._note('Retrieved OCSP status "', ocsp_status, '" for ', key_type.upper(), ' certificate ', certificate_name,
+                                               ' from ', ocsp_url,
+                                               ' updated at ', this_update.strftime('%Y-%m-%d %H:%M:%S UTC'), '\n')
+                                    if ('good' == ocsp_status):
+                                        if (this_update == last_update):
+                                            break
+                                        self._status('Saving OCSP response for ', key_type.upper(), ' certificate ', certificate_name,
+                                                     ' from ', ocsp_url, '\n')
+                                        transactions.append(self.save_ocsp_response(certificate_name, key_type, ocsp_response))
+                                        self.update_services(self._get_list(key_certificates[certificate_name], 'services'))
+                                        break
+                                    else:
+                                        self._warn(key_type.upper(), ' certificate ', certificate_name, ' has OCSP status "', ocsp_status, '"',
+                                                   ' from ', ocsp_url,
+                                                   ' updated at ', this_update.strftime('%Y-%m-%d %H:%M:%S UTC'), '\n')
+                                else:
+                                    self._warn(key_type.upper(), ' certificate ', certificate_name,
+                                               ' OCSP request received "', ocsp_response['response_status'].native, '"',
+                                               ' from ', ocsp_url, '\n')
+                        else:
+                            self._warn('Unable to retrieve OCSP response for ', key_type.upper(), ' certificate ', certificate_name, '\n')
+                    else:
+                        self._warn('No OCSP responder URL for ', key_type.upper(), ' certificate ', certificate_name, ' and no default set\n')
+
+            try:
+                self._commit_file_transactions(transactions, archive_name=None)
+            except Exception as error:
+                self._warn('Unable to save OCSP responses for ', private_key_name, '\n', error, '\n')
+
     def _process_running(self, pid_file_path):
         try:
             with open(pid_file_path) as pid_file:
@@ -1988,11 +2143,14 @@ class AcmeManager(object):
                 self.update_tlsa_records(self.args.private_key_names)
             elif (self.args.sct):
                 self.update_signed_certificate_timestamps(self.args.private_key_names)
+            elif (self.args.ocsp):
+                self.update_ocsp_responses(self.args.private_key_names)
             else:
                 self.process_authorizations(self.args.private_key_names)
                 self.process_certificates(self.args.private_key_names)
                 self.update_tlsa_records(self.args.private_key_names)
                 self.update_signed_certificate_timestamps(self.args.private_key_names)
+                self.update_ocsp_responses(self.args.private_key_names)
             self.reload_services()
             del self.acme_client
         finally:
