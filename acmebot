@@ -1135,6 +1135,11 @@ class AcmeManager(object):
     def archive_sct(self, file_name, key_type, ct_log_name, archive_name='', archive_date=None):
         self._archive_file('sct', self._file_path('sct', file_name, key_type, ct_log_name=ct_log_name), archive_name=archive_name, archive_date=archive_date)
 
+    def ocsp_response_serial_number(self, ocsp_response):
+        if ('cert_id' in ocsp_response.response_data['responses'][0]):
+            return ocsp_response.response_data['responses'][0]['cert_id']['serial_number'].native
+        return None
+
     def ocsp_response_this_update(self, ocsp_response):
         if ('this_update' in ocsp_response.response_data['responses'][0]):
             return datetime.datetime.strptime(str(ocsp_response.response_data['responses'][0]['this_update']), "%Y%m%d%H%M%SZ")
@@ -2034,16 +2039,18 @@ class AcmeManager(object):
             for certificate_name in key_certificates:
                 certificate_key_types = self._get_list(key_certificates[certificate_name], 'key_types', key_options.keys())
                 for key_type in certificate_key_types:
+                    certificate = self.load_certificate('certificate', certificate_name, key_type)
+                    asn1crypto_certificate = asn1_x509.Certificate.load(self._certificate_bytes(certificate))
+
                     ocsp_response = self.load_oscp_response(certificate_name, key_type)
-                    if (ocsp_response and ('good' == self.ocsp_response_status(ocsp_response))):
+                    if (ocsp_response and ('good' == self.ocsp_response_status(ocsp_response))
+                            and (self.ocsp_response_serial_number(ocsp_response) == asn1crypto_certificate.serial_number)):
                         last_update = self.ocsp_response_this_update(ocsp_response)
                         self._note('Have stapled OCSP response for ', key_type.upper(), ' certificate ', certificate_name,
                                    ' updated at ', last_update.strftime('%Y-%m-%d %H:%M:%S UTC'), '\n')
                     else:
                         last_update = None
 
-                    certificate = self.load_certificate('certificate', certificate_name, key_type)
-                    asn1crypto_certificate = asn1_x509.Certificate.load(self._certificate_bytes(certificate))
                     ocsp_urls = (asn1crypto_certificate.ocsp_urls
                                  or self._get_list(key_certificates[certificate_name], 'ocsp_responder_urls', default_ocsp_responder_urls))
                     if (ocsp_urls):
