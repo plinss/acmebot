@@ -1153,16 +1153,20 @@ class AcmeManager(object):
     def ocsp_response_status(self, ocsp_response):
         return ocsp_response.response_data['responses'][0]['cert_status'].name
 
-    def fetch_ocsp_response(self, ocsp_url, ocsp_request):
+    def fetch_ocsp_response(self, ocsp_url, ocsp_request, last_update):
         request = urllib.request.Request(url=ocsp_url, data=ocsp_request.dump())
         request.add_header('Content-Type', 'application/ocsp-request')
         request.add_header('Accept', 'application/ocsp-response')
         request.add_header('Host', urllib.parse.urlparse(ocsp_url).hostname)
+        if (last_update):
+            request.add_header('If-Modified-Since', last_update.strftime('%a, %d %b %Y %H:%M:%S GMT'))
         try:
             with urllib.request.urlopen(request) as response:
                 # XXX add validation of response
                 return asn1_ocsp.OCSPResponse.load(response.read())
         except urllib.error.HTTPError as error:
+            if (last_update and (304 == error.code)):
+                return False
             if ((400 <= error.code) and (error.code < 500)):
                 self._warn('Unable to retrieve OCSP response from ', ocsp_url, ' HTTP error: ', error.code, ' ', error.reason, '\n', error.read(), '\n')
             else:
@@ -2079,7 +2083,7 @@ class AcmeManager(object):
                         })
 
                         for ocsp_url in ocsp_urls:
-                            ocsp_response = self.fetch_ocsp_response(ocsp_url, ocsp_request)
+                            ocsp_response = self.fetch_ocsp_response(ocsp_url, ocsp_request, last_update)
                             if (ocsp_response):
                                 if ('successful' == ocsp_response['response_status'].native):
                                     ocsp_status = self.ocsp_response_status(ocsp_response)
@@ -2103,6 +2107,11 @@ class AcmeManager(object):
                                     self._warn(key_type.upper(), ' certificate ', certificate_name,
                                                ' OCSP request received "', ocsp_response['response_status'].native, '"',
                                                ' from ', ocsp_url, '\n')
+                            elif (ocsp_response is False):
+                                self._note('OCSP response for ', key_type.upper(), ' certificate ', certificate_name,
+                                           ' from ', ocsp_url,
+                                           ' has not been updated\n')
+                                break
                         else:
                             self._warn('Unable to retrieve OCSP response for ', key_type.upper(), ' certificate ', certificate_name, '\n')
                     else:
