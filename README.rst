@@ -702,6 +702,7 @@ Example::
             "postfix": "systemctl reload postfix",
             "postgresql": "systemctl reload postgresql",
             "prosody": "systemctl restart prosody",
+            "slapd": "systemctl restart slapd",
             "synapse": "systemctl restart matrix-synapse",
             "znc": "systemctl restart znc"
         },
