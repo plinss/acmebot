@@ -1303,10 +1303,16 @@ class AcmeManager(object):
                 self.registration = messages.RegistrationResource.json_loads(registration_file.read())
                 self._note('Loaded registration ', registration_path, '\n')
 
-            self.registration = self.acme_client.query_registration(self.registration)
+            try:
+                self.registration = self.acme_client.query_registration(self.registration)
+            except Exception as error:
+                self._error("Can't query ACME registration.\n", error, '\n')
         else:
             self._note('Registering client\n')
-            self.registration = self.acme_client.register(messages.NewRegistration.from_data(email=self._account('email')))
+            try:
+                self.registration = self.acme_client.register(messages.NewRegistration.from_data(email=self._account('email')))
+            except Exception as error:
+                self._error("Can't register with ACME service.\n", error, '\n')
             if (self.registration.terms_of_service):
                 if (sys.stdin.isatty()):
                     self._status('ACME service has the following terms of service:\n', self.registration.terms_of_service, '\n')
@@ -1318,8 +1324,11 @@ class AcmeManager(object):
                     self._note('Terms of service accepted.\n')
                 else:
                     self._note('Auto-accepting TOS: ', self.registration.terms_of_service, '\n')
-            self.acme_client.agree_to_tos(self.registration)
-            self.registration = self.acme_client.query_registration(self.registration)   # get agreement info
+            try:
+                self.acme_client.agree_to_tos(self.registration)
+                self.registration = self.acme_client.query_registration(self.registration)   # get agreement info
+            except Exception as error:
+                self._error("Can't accept ACME terms of service.\n", error, '\n')
         with FileTransaction('registration', registration_path, chmod=0o600) as transaction:
             transaction.write(self.registration.json_dumps())
             self._note('Saved registration ', registration_path, '\n')
@@ -2094,8 +2103,8 @@ class AcmeManager(object):
                                     if ('good' == ocsp_status):
                                         if (this_update == last_update):
                                             break
-                                        self._status('Saving OCSP response for ', key_type.upper(), ' certificate ', certificate_name,
-                                                     ' from ', ocsp_url, '\n')
+                                        self._note('Saving OCSP response for ', key_type.upper(), ' certificate ', certificate_name,
+                                                   ' from ', ocsp_url, '\n')
                                         transactions.append(self.save_ocsp_response(certificate_name, key_type, ocsp_response))
                                         self.update_services(self._get_list(key_certificates[certificate_name], 'services'))
                                         break
