@@ -1481,7 +1481,8 @@ class AcmeManager(object):
                 self._debug('Authorization received\n')
                 continue
             elif (messages.STATUS_INVALID == authorization_resource.body.status):
-                self._debug('Invalid authorization: ', self._get_challenge(authorization_resource, challenge_types[domain_name]).error.detail, '\n')
+                error = self._get_challenge(authorization_resource, challenge_types[domain_name]).error
+                self._debug('Invalid authorization: ', error.detail if (error) else 'Unknown error', '\n')
                 failed.append(authorization_resource)
             elif (messages.STATUS_PENDING == authorization_resource.body.status):
                 if (self._setting('max_authorization_attempts') < attempts[authorization_resource]):
