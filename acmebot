@@ -1988,7 +1988,11 @@ class AcmeManager(object):
                     chain = []
                     certificate_key_types = self._get_list(key_certificates[certificate_name], 'key_types', key_options.keys())
                     for key_type in certificate_key_types:
-                        certificates.append(self.load_certificate('certificate', certificate_name, key_type))
+                        certificate = self.load_certificate('certificate', certificate_name, key_type)
+                        if (not certificate):
+                            self._warn(key_type.upper(), ' certificate ', certificate_name, ' not found\n')
+                            continue
+                        certificates.append(certificate)
                         chain += self.load_chain(certificate_name, key_type)
 
                     for zone_name in tlsa_records:
@@ -2026,18 +2030,21 @@ class AcmeManager(object):
                     certificate_key_types = self._get_list(key_certificates[certificate_name], 'key_types', key_options.keys())
                     for key_type in certificate_key_types:
                         certificate = self.load_certificate('certificate', certificate_name, key_type)
-                        chain = self.load_chain(certificate_name, key_type)
-                        for ct_log_name in ct_submit_logs:
-                            sct_data = self.fetch_sct(ct_log_name, certificate, chain)
-                            if (sct_data):
-                                self._detail(ct_log_name, ' has SCT for ', key_type.upper(), ' certificate ', certificate_name, ' at ',
-                                             self._sct_datetime(sct_data.timestamp).isoformat(), '\n')
-                            existing_sct_data = self.load_sct(certificate_name, key_type, ct_log_name)
-                            if (sct_data and ((not existing_sct_data) or (sct_data != existing_sct_data))):
-                                self._info('Saving Signed Certificate Timestamp for ', key_type.upper(), ' certificate ', certificate_name,
-                                           ' from ', ct_log_name, '\n')
-                                transactions.append(self.save_sct(certificate_name, key_type, ct_log_name, sct_data))
-                                self.update_services(self._get_list(key_certificates[certificate_name], 'services'))
+                        if (certificate):
+                            chain = self.load_chain(certificate_name, key_type)
+                            for ct_log_name in ct_submit_logs:
+                                sct_data = self.fetch_sct(ct_log_name, certificate, chain)
+                                if (sct_data):
+                                    self._detail(ct_log_name, ' has SCT for ', key_type.upper(), ' certificate ', certificate_name, ' at ',
+                                                 self._sct_datetime(sct_data.timestamp).isoformat(), '\n')
+                                existing_sct_data = self.load_sct(certificate_name, key_type, ct_log_name)
+                                if (sct_data and ((not existing_sct_data) or (sct_data != existing_sct_data))):
+                                    self._info('Saving Signed Certificate Timestamp for ', key_type.upper(), ' certificate ', certificate_name,
+                                               ' from ', ct_log_name, '\n')
+                                    transactions.append(self.save_sct(certificate_name, key_type, ct_log_name, sct_data))
+                                    self.update_services(self._get_list(key_certificates[certificate_name], 'services'))
+                        else:
+                            self._warn(key_type.upper(), ' certificate ', certificate_name, ' not found\n')
 
             try:
                 self._commit_file_transactions(transactions, archive_name=None)
@@ -2067,6 +2074,9 @@ class AcmeManager(object):
                 certificate_key_types = self._get_list(key_certificates[certificate_name], 'key_types', key_options.keys())
                 for key_type in certificate_key_types:
                     certificate = self.load_certificate('certificate', certificate_name, key_type)
+                    if (not certificate):
+                        self._warn(key_type.upper(), ' certificate ', certificate_name, ' not found\n')
+                        continue
                     asn1crypto_certificate = asn1_x509.Certificate.load(self._certificate_bytes(certificate))
 
                     ocsp_response = self.load_oscp_response(certificate_name, key_type)
