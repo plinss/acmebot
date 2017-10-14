@@ -233,9 +233,9 @@ First Run
 
 Once the configuration file is in place,
 simply execute the tool.
-For the first run you may wish to select verbose output to see exactly what the tool is doing::
+For the first run you may wish to select detailed output to see exactly what the tool is doing::
 
-    acmebot --verbose
+    acmebot --detail
 
 If all goes well,
 the tool will generate a public/private key pair used for client authentication to the certificate authority,
@@ -478,8 +478,8 @@ All of these need only be present when the desired value is different from the d
   The master will obtain authorizations and issue certificates,
   a slave will not attempt to obtain authorizations but can issue certificates.
 * ``log_level`` specifies the amount of information written into the log file.
-  Possible values are ``null``, ``"normal"``, ``"debug"``, and ``"verbose"``.
-  ``"debug"`` and ``"verbose"`` settings correlate to the ``--debug`` and ``--verbose`` command-line options.
+  Possible values are ``null``, ``"normal"``, ``"verbose"``, ``"debug"``, and ``"detail"``.
+  ``"verbose"``, ``"debug"``, and ``"detail"`` settings correlate to the ``--verbose``, ``--debug`` and ``--detail`` command-line options.
 * ``key_size`` specifies the size (in bits) for RSA private keys.
   The default value is ``4096``.
   RSA certificates can be turned off by setting this value to ``0`` or ``null``.
@@ -1380,7 +1380,7 @@ Output Options
 --------------
 
 Normally the tool will only generate output to stdout when certificates are issued or private keys need to be rolled over.
-More detailed output can be obtained by using either ``--debug`` or ``--verbose`` options on the command line.
+More detailed output can be obtained by using any of the ``--verbose``, ``--debug``, or ``--detail`` options on the command line.
 
 Normal output may be supressed by using the ``--quiet`` option.
 
