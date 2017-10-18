@@ -1380,17 +1380,20 @@ class AcmeManager(object):
         for zone_name in domain_challenges:
             for domain_name in domain_challenges[zone_name]:
                 self._debug('Request authorization for ', domain_name, '\n')
-                authorization_resource = self.acme_client.request_domain_challenges(domain_name, new_authzr_uri=self.registration.new_authzr_uri)
-                if (messages.STATUS_VALID == authorization_resource.body.status):
-                    self.authorizations[domain_name] = authorization_resource
-                    self._debug(domain_name, ' already authorized\n')
-                elif (messages.STATUS_PENDING == authorization_resource.body.status):
-                    if (not self._setting('slave_mode')):
-                        authorization_resources[domain_name] = authorization_resource
+                try:
+                    authorization_resource = self.acme_client.request_domain_challenges(domain_name, new_authzr_uri=self.registration.new_authzr_uri)
+                    if (messages.STATUS_VALID == authorization_resource.body.status):
+                        self.authorizations[domain_name] = authorization_resource
+                        self._debug(domain_name, ' already authorized\n')
+                    elif (messages.STATUS_PENDING == authorization_resource.body.status):
+                        if (not self._setting('slave_mode')):
+                            authorization_resources[domain_name] = authorization_resource
+                        else:
+                            self._debug(domain_name, ' not authorized\n')
                     else:
-                        self._debug(domain_name, ' not authorized\n')
-                else:
-                    self._error('Unexpected status "', authorization_resource.body.status, '" for authorization of ', domain_name, '\n')
+                        self._error('Unexpected status "', authorization_resource.body.status, '" for authorization of ', domain_name, '\n')
+                except Exception as error:
+                    self._warn('Error requesting authorization for ', domain_name, ':\n', error, '\n')
 
         # set challenge responses
         challenge_types = {}
@@ -1464,7 +1467,10 @@ class AcmeManager(object):
         for domain_name in authorization_resources:
             self._debug('Answering challenge for ', domain_name, '\n')
             challenge = self._get_challenge(authorization_resources[domain_name], challenge_types[domain_name])
-            self.acme_client.answer_challenge(challenge, challenge.response(self.client_key))
+            try:
+                self.acme_client.answer_challenge(challenge, challenge.response(self.client_key))
+            except Exception as error:
+                self._warn('Error answering challenge for ', domain_name, ':\n', error, '\n')
 
         # poll for authorizations
         waiting = [AuthorizationTuple(datetime.datetime.now(), authorization_resource) for authorization_resource in authorization_resources.values()]
@@ -1479,12 +1485,16 @@ class AcmeManager(object):
                 if (0 < seconds):
                     time.sleep(seconds)
             self._debug('Polling for ', authorization_resource.body.identifier.value, '\n')
-            authorization_resource, response = self.acme_client.poll(authorization_resource)
-            if (200 != response.status_code):
-                self._warn(response, ' while waiting for domain challenge\n')
-                heapq.heappush(waiting, AuthorizationTuple(
-                    self.acme_client.retry_after(response, default=self._setting('authorization_delay')),
-                    authorization_resource))
+            try:
+                authorization_resource, response = self.acme_client.poll(authorization_resource)
+                if (200 != response.status_code):
+                    self._warn(response, ' while waiting for domain challenge\n')
+                    heapq.heappush(waiting, AuthorizationTuple(
+                        self.acme_client.retry_after(response, default=self._setting('authorization_delay')),
+                        authorization_resource))
+                    continue
+            except Exception as error:
+                self._warn('Error polling for authorization for ', authorization_resource.body.identifier.value, ':\n', error, '\n')
                 continue
 
             attempts[authorization_resource] += 1
