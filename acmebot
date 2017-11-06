@@ -274,6 +274,10 @@ class AcmeManager(object):
                     'url': 'https://ct.googleapis.com/skydiver',
                     'id': 'u9nfvB+KcbWTlCOXqpJ7RzhXlQqrUugakJZkNo4e0YU='
                 },
+                'google_testtube': {
+                    'url': 'http://ct.googleapis.com/testtube',
+                    'id': 'sMyD5aX5fWuvfAnMKEkEhyrH6IsTLGNQt8b9JuFsbHc='
+                },
                 'digicert': {
                     'url': 'https://ct1.digicert-ct.com/log',
                     'id': 'VhQGmi/XwuzT9eG9RLI+x0Z2ubyZEVzA75SYVdaJ0N0='

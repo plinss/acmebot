@@ -356,6 +356,7 @@ Signed Certificate Timestamp (SCT) Files
 One additional file will be created for each key type and configured certificate transparency log in ``/etc/ssl/scts/<certificate-name>/<key-type>/<log-name>.sct``.
 These files contain SCT information in binary form suitable to be included in a TLS extension.
 By default, SCTs will be retrieved from the Google Icarus and Google Pilot certificate transparency logs.
+The Google Test Tube certificate transparency log can be used with the Let's Encrypt staging environment for testing.
 
 
 OCSP Response Files
@@ -522,7 +523,8 @@ All of these need only be present when the desired value is different from the d
 * ``ocsp_responder_urls`` specifies the list of OCSP responders to use if a certificate doesn't provide them.
   The default value is ``["http://ocsp.int-x3.letsencrypt.org"]``.
 * ``ct_submit_logs`` specifies the list of certificate transparency logs to submit certificates to.
-  The default value is ``["google-icarus", "google-pilot"]``.
+  The default value is ``["google_icarus", "google_pilot"]``.
+  The value ``["google_testtube"]`` can be used with the Let's Encrypt staging environment for testing.
 * ``renewal_days`` specifies the number of days before expiration when the tool will attempt to renew a certificate.
   The default value is ``30``.
 * ``expiration_days`` specifies the number of days that private keys should be used for.
@@ -793,6 +795,7 @@ The name of each certificate is used as the name of the certificate files.
   The default value is the value specified in the ``settings`` section.
 * ``ct_submit_logs`` specifies the list of certificate transparency logs to submit the certificate to.
   The default value is the value specified in the ``settings`` section.
+  The value ``["google_testtube"]`` can be used with the Let's Encrypt staging environment for testing.
 
 Example::
 
