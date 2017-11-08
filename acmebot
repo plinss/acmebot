@@ -20,6 +20,7 @@ import os
 import pwd
 import random
 import re
+import shlex
 import struct
 import subprocess
 import sys
@@ -109,7 +110,7 @@ class AcmeManager(object):
     def __init__(self):
         self.script_dir = os.path.dirname(os.path.realpath(__file__))
         self.script_name = os.path.basename(__file__)
-        self.script_version = '1.7'
+        self.script_version = '1.8'
 
         argparser = argparse.ArgumentParser(description='ACME Certificate Manager')
         argparser.add_argument('--version', action='version', version='%(prog)s ' + self.script_version)
@@ -167,6 +168,7 @@ class AcmeManager(object):
         self.authorizations = {}
         self.key_passphrases = {}
         self.updated_services = set()
+        self.hooks = collections.OrderedDict()
 
         self.config, self.config_file_path = self._load_config(self.args.config_path, ('.', os.path.join('/etc', self.script_name), self.script_dir))
         self._key_types = ('rsa', 'ecdsa')
@@ -442,7 +444,8 @@ class AcmeManager(object):
             try:
                 os.chown(new_file_path, self._get_user_id(self._setting('file_user')), self._get_group_id(self._setting('file_group')))
             except PermissionError as error:
-                self._warn('Unable to set file ownership for ', new_file_path, '\n', error, '\n')
+                self._warn('Unable to set file ownership for ', new_file_path, ' to ',
+                           self._setting('file_user'), ':', self._setting('file_group'), '\n', error, '\n')
             return new_file_path
         return None
 
@@ -873,6 +876,8 @@ class AcmeManager(object):
             with FileTransaction('hpkp', self._file_path('hpkp', file_name, server=server), chmod=0o644) as transaction:
                 transaction.write(header)
                 transactions.append(transaction)
+            self._add_hook('hpkp_header_installed', key_name=file_name, server=server, header=header,
+                           hpkp_file=self._file_path('hpkp', file_name, server=server))
         return transactions
 
     def archive_hpkp_headers(self, file_name, archive_name='', archive_date=None):
@@ -1232,6 +1237,34 @@ class AcmeManager(object):
             directory = os.path.dirname(directory)
         return os.stat(directory).st_dev
 
+    def _add_hook(self, hook_name, **kwargs):
+        hook = self._config('hooks', hook_name)
+        if (hook):
+            args = {}
+            for key in kwargs:
+                args[key] = shlex.quote(kwargs[key])
+            if (hook_name not in self.hooks):
+                self.hooks[hook_name] = []
+            try:
+                self.hooks[hook_name].append(hook.format(**args))
+            except KeyError as error:
+                self._warn('Invalid hook specification for ', hook_name, ', unknown key ', error, '\n')
+
+    def _call_hooks(self):
+        for hook_name, hooks in self.hooks.items():
+            for hook in hooks:
+                try:
+                    self._debug('Calling hook ', hook_name, ': ', hook, '\n')
+                    self._status(subprocess.check_output(hook, stderr=subprocess.STDOUT, shell=True))
+                except subprocess.CalledProcessError as error:
+                    self._warn('Hook ', hook_name, ' returned error, code: ', error.returncode, '\n', error.output, '\n')
+                except Exception as error:
+                    self._warn('Failed to call hook ', hook_name, ': ', hook, '\n', error, '\n')
+        self._clear_hooks()
+
+    def _clear_hooks(self):
+        self.hooks.clear()
+
     def _validate_config(self):
         for section_name, default_section in self._config_defaults.items():
             if (section_name not in self.config):
@@ -1417,6 +1450,7 @@ class AcmeManager(object):
                             with self._open_file(challenge_file_path, 'w', 0o644) as challenge_file:
                                 challenge_file.write(challenge.validation(self.client_key))
                             challenge_http_responses[domain_name] = challenge_file_path
+                            self._add_hook('set_http_challenge', domain=domain_name, challenge_file=challenge_http_responses[domain_name])
                         except Exception as error:
                             self._warn('Unable to create acme-challenge file ', challenge_file_path, '\n', error, '\n')
                     else:
@@ -1424,6 +1458,7 @@ class AcmeManager(object):
                         challenge = self._get_challenge(authorization_resources[domain_name], challenge_types[domain_name])
                         zone_responses[domain_name] = challenge.validation(self.client_key)
                         self._debug('Setting DNS for _acme-challenge.', domain_name, ' = "', zone_responses[domain_name], '"\n')
+                        self._add_hook('set_dns_challenge', zone=zone_name, domain=domain_name, challenge=zone_responses[domain_name])
             if (zone_responses):
                 zone_key = self._zone_key(zone_name)
                 if (zone_key):
@@ -1438,6 +1473,8 @@ class AcmeManager(object):
                         self._warn('Unable to create acme-challenge file for zone ', zone_name, '\n', error, '\n')
                     if (zone_name in challenge_dns_responses):
                         self._reload_zone(zone_name)
+                self._add_hook('dns_zone_update', zone=zone_name)
+            self._call_hooks()
 
         # wait for DNS propagation
         waiting = []
@@ -1525,15 +1562,21 @@ class AcmeManager(object):
         # clear challenge responses
         for zone_name in challenge_dns_responses:
             self._debug('Removing DNS _acme-challenges for ', zone_name, '\n')
+            for domain_name, challenge in challenge_dns_responses[zone_name].items():
+                self._add_hook('clear_dns_challenge', zone=zone_name, domain=domain_name, challenge=challenge)
             zone_key = self._zone_key(zone_name)
             if (zone_key):
                 self._remove_dns_challenges(zone_name, zone_key, challenge_dns_responses[zone_name])
             else:
                 os.remove(self._file_path('challenge', zone_name))
                 self._reload_zone(zone_name)
+            self._add_hook('dns_zone_update', zone=zone_name)
+
         for domain_name in challenge_http_responses:
             self._debug('Removing http acme-challenge for ', domain_name, '\n')
+            self._add_hook('clear_http_challenge', domain=domain_name, challenge_file=challenge_http_responses[domain_name])
             os.remove(challenge_http_responses[domain_name])
+        self._call_hooks()
 
         for authorization_resource in failed:
             self._warn('Authorization failed for ', authorization_resource.body.identifier.value, '\n')
@@ -1613,6 +1656,10 @@ class AcmeManager(object):
                     keys[key_type] = backup_keys[key_type]
                     backup_keys[key_type] = KeyData(None, None)
                     rolled_private_key = True
+                    self._add_hook('private_key_rollover', key_name=private_key_name, key_type=key_type,
+                                   private_key_file=self._file_path('private_key', private_key_name, key_type),
+                                   backup_key_file=self._file_path('backup_key', private_key_name, key_type),
+                                   passphrase=key_cipher_data.passphrase if (key_cipher_data) else None)
             if (rolled_private_key):
                 self._status('Private key rolled over for ', private_key_name, '\n')
 
@@ -1750,10 +1797,16 @@ class AcmeManager(object):
                         transactions.append(self.save_private_key('private_key', private_key_name, key_type,
                                                                   private_key_data.keys[key_type].key, key_cipher_data,
                                                                   timestamp=private_key_data.keys[key_type].timestamp))
+                        self._add_hook('private_key_installed', key_name=private_key_name, key_type=key_type,
+                                       private_key_file=self._file_path('private_key', private_key_name, key_type),
+                                       passphrase=key_cipher_data.passphrase if (key_cipher_data) else None)
                     if (generated_backup_key):
                         transactions.append(self.save_private_key('backup_key', private_key_name, key_type,
                                                                   backup_keys[key_type].key, key_cipher_data,
                                                                   timestamp=backup_keys[key_type].timestamp))
+                        self._add_hook('backup_key_installed', key_name=private_key_name, key_type=key_type,
+                                       backup_key_file=self._file_path('backup_key', private_key_name, key_type),
+                                       passphrase=key_cipher_data.passphrase if (key_cipher_data) else None)
             except PrivateKeyError as error:
                 self._warn('Unable to encrypt private key ', error, '\n')
                 continue
@@ -1812,6 +1865,8 @@ class AcmeManager(object):
                 if ((dhparam_pem or ecparam_pem) and self._directory('param')
                         and (generated_params or not self.params_present(certificate_name, dhparam_pem, ecparam_pem))):
                     transactions.append(self.save_params(certificate_name, dhparam_pem, ecparam_pem))
+                    self._add_hook('params_installed', key_name=private_key_name, certificate_name=certificate_name,
+                                   params_file=self._file_path('param', certificate_name))
                 certificate_params[certificate_name] = (dhparam_pem, ecparam_pem, generated_params)
 
             # save issued certificates
@@ -1828,6 +1883,8 @@ class AcmeManager(object):
                 transactions.append(self.save_certificate('certificate', certificate_name, key_type, certificate_data.certificate,
                                                           chain=certificate_data.chain,
                                                           dhparam_pem=dhparam_pem, ecparam_pem=ecparam_pem))
+                self._add_hook('certificate_installed', key_name=private_key_name, key_type=key_type, certificate_name=certificate_name,
+                               certificate_file=self._file_path('certificate', certificate_name, key_type))
                 if (root_certificates[key_type] and self._directory('full_certificate')):
                     transactions.append(self.save_certificate('full_certificate', certificate_name, key_type, certificate_data.certificate,
                                                               chain=certificate_data.chain, root_certificate=root_certificates[key_type],
@@ -1863,6 +1920,8 @@ class AcmeManager(object):
                             transactions.append(self.save_certificate('certificate', certificate_name, key_type, certificate,
                                                                       chain=chain,
                                                                       dhparam_pem=dhparam_pem, ecparam_pem=ecparam_pem))
+                            self._add_hook('certificate_installed', key_name=private_key_name, key_type=key_type, certificate_name=certificate_name,
+                                           certificate_file=self._file_path('certificate', certificate_name, key_type))
                             if (root_certificates[key_type] and self._directory('full_certificate')):
                                 transactions.append(self.save_certificate('full_certificate', certificate_name, key_type, certificate,
                                                                           chain=chain, root_certificate=root_certificates[key_type],
@@ -1879,6 +1938,7 @@ class AcmeManager(object):
 
             try:
                 self._commit_file_transactions(transactions, archive_name=private_key_name)
+                self._call_hooks()
                 if (private_key_data.generated_key or private_key_data.rolled_key or generated_backup_key):
                     self._status('Private keys for ', private_key_name, ' installed\n')
                 for certificate_name in saved_certificates:
@@ -1895,6 +1955,7 @@ class AcmeManager(object):
 
             except Exception as error:
                 self._warn('Unable to install keys and certificates for ', private_key_name, '\n', error, '\n')
+                self._clear_hooks()
 
         for zone_name in updated_key_zones:
             self._reload_zone(zone_name, critical=False)
@@ -2021,6 +2082,8 @@ class AcmeManager(object):
 
         for zone_name in tlsa_zones:
             self._set_tlsa_records(zone_name, self._zone_key(zone_name), tlsa_zones[zone_name])
+            self._add_hook('dns_zone_update', zone=zone_name)
+        self._call_hooks()
 
     def update_signed_certificate_timestamps(self, private_key_names):
         if (not self._directory('sct')):
@@ -2056,14 +2119,19 @@ class AcmeManager(object):
                                     self._info('Saving Signed Certificate Timestamp for ', key_type.upper(), ' certificate ', certificate_name,
                                                ' from ', ct_log_name, '\n')
                                     transactions.append(self.save_sct(certificate_name, key_type, ct_log_name, sct_data))
+                                    self._add_hook('sct_installed', key_name=private_key_name, key_type=key_type,
+                                                   certificate_name=certificate_name, ct_log_name=ct_log_name,
+                                                   sct_file=self._file_path('sct', certificate_name, key_type, ct_log_name=ct_log_name))
                                     self.update_services(self._get_list(key_certificates[certificate_name], 'services'))
                         else:
                             self._warn(key_type.upper(), ' certificate ', certificate_name, ' not found\n')
 
             try:
                 self._commit_file_transactions(transactions, archive_name=None)
+                self._call_hooks()
             except Exception as error:
                 self._warn('Unable to save Signed Certificate Timestamps for ', private_key_name, '\n', error, '\n')
+                self._clear_hooks()
 
     def update_ocsp_responses(self, private_key_names):
         if (not self._directory('ocsp')):
@@ -2144,6 +2212,9 @@ class AcmeManager(object):
                                         self._info('Saving OCSP response for ', key_type.upper(), ' certificate ', certificate_name,
                                                    ' from ', ocsp_url, '\n')
                                         transactions.append(self.save_ocsp_response(certificate_name, key_type, ocsp_response))
+                                        self._add_hook('ocsp_installed', key_name=private_key_name, key_type=key_type,
+                                                       certificate_name=certificate_name,
+                                                       ocsp_file=self._file_path('ocsp', certificate_name, key_type))
                                         self.update_services(self._get_list(key_certificates[certificate_name], 'services'))
                                         break
                                     else:
@@ -2166,8 +2237,10 @@ class AcmeManager(object):
 
             try:
                 self._commit_file_transactions(transactions, archive_name=None)
+                self._call_hooks()
             except Exception as error:
                 self._warn('Unable to save OCSP responses for ', private_key_name, '\n', error, '\n')
+                self._clear_hooks()
 
     def _process_running(self, pid_file_path):
         try:
