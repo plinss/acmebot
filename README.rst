@@ -1228,7 +1228,7 @@ Example::
 Deployment Hooks
 ----------------
 
-This section defines the set of hooks that can be called when given actions happen.
+This section defines the set of hooks that can be called via the shell when given actions happen.
 Paramaters to hooks are specified using Python format strings.
 Fields available for each hook are described below.
 Output from the hooks will be captured in the log.
