@@ -1366,7 +1366,7 @@ class AcmeManager(object):
             if (self.registration.terms_of_service):
                 if (sys.stdin.isatty()):
                     self._status('ACME service has the following terms of service:\n', self.registration.terms_of_service, '\n')
-                    answer = input('Accept? (Y/n) ')
+                    answer = input('Accept? (y/N) ')
                     if (answer and not answer.lower().startswith('y')):
                         self._archive_file('client', client_key_path)
                         self._archive_file('client', registration_path)
