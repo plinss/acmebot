@@ -608,7 +608,9 @@ Directories
 -----------
 
 Directories used to store the input and output files of the tool.
-All of these need only be present when the desired value is different from the default.
+The paths are interpreted as absolute or relative to the active directory when starting (``pwd``; not the location of the ``acmebot`` file).
+They are required to exist before calling ``acmebot`` and must be writeable for the user.
+All of these settings only need to be present when the desired value is different from the default.
 
 * ``pid`` specifies the directory to store a process ID file.
   The default value is ``"/var/run"``.
