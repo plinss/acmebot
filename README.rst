@@ -1144,8 +1144,8 @@ The ``name`` field is the name of the private key or certificate.
 
 * ``log`` specifies the name of the log file.
 * ``private_key`` specifies the name of primary private key files.
-* ``backup_key`` speficies the name of backup private key files.
-* ``full_key`` speficies the name of primary private key files that include the certificate chain.
+* ``backup_key`` specifies the name of backup private key files.
+* ``full_key`` specifies the name of primary private key files that include the certificate chain.
 * ``certificate`` specifies the name of certificate files.
 * ``full_certificate`` specifies the name of certificate files that include the root certificate.
 * ``chain`` specifies the name of intemediate certificate files.
@@ -1255,6 +1255,12 @@ but will not otherwise affect the operation of this tool.
   Available fields are ``key_name``, ``server``, ``header``, and ``hpkp_file``.
 * ``certificate_installed`` is called when a certificate file is installed.
   Available fields are ``key_name``, ``key_type``, ``certificate_name``, and ``certificate_file``.
+* ``full_certificate_installed`` is called when a certificate file that includes the root is installed.
+  Available fields are ``key_name``, ``key_type``, ``certificate_name``, and ``full_certificate_file``.
+* ``chain_installed`` is called when a certificate intermediate chain file is installed.
+  Available fields are ``key_name``, ``key_type``, ``certificate_name``, and ``chain_file``.
+* ``full_key_installed`` is called when a private key including the full certificate chain file is installed.
+  Available fields are ``key_name``, ``key_type``, ``certificate_name``, and ``full_key_file``.
 * ``params_installed`` is called when a params file is installed.
   Available fields are ``key_name``, ``certificate_name``, and ``params_file``.
 * ``sct_installed`` is called when a SCT file is installed.
