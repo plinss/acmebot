@@ -1236,37 +1236,37 @@ Hooks returing a non-zero status code will generate warnings,
 but will not otherwise affect the operation of this tool.
 
 * ``set_dns_challenge`` is called for each DNS challenge record that is set.
-Available fields are ``domain``, ``zone``, and ``challenge``.
+  Available fields are ``domain``, ``zone``, and ``challenge``.
 * ``clear_dns_challenge`` is called for each DNS challenge record that is removed.
-Available fields are ``domain``, ``zone``, and ``challenge``.
+  Available fields are ``domain``, ``zone``, and ``challenge``.
 * ``dns_zone_update`` is called when a DNS zone is updated via either local or remote updates.
-Available field is ``zone``.
+  Available field is ``zone``.
 * ``set_http_challenge`` is called for each HTTP challenge file that is installed.
-Available fields are ``domain``, and ``challenge_file``.
+  Available fields are ``domain``, and ``challenge_file``.
 * ``clear_http_challenge`` is called for each HTTP challenge file that is removed.
-Available fields are ``domain``, and ``challenge_file``.
+  Available fields are ``domain``, and ``challenge_file``.
 * ``private_key_rollover`` is called when a private key is replaced by a backup private key.
-Available fields are ``key_name``, ``key_type``, ``backup_key_file``, ``private_key_file``, and ``passphrase``.
+  Available fields are ``key_name``, ``key_type``, ``backup_key_file``, ``private_key_file``, and ``passphrase``.
 * ``private_key_installed`` is called when a private key is installed.
-Available fields are ``key_name``, ``key_type``, ``private_key_file``, and ``passphrase``.
+  Available fields are ``key_name``, ``key_type``, ``private_key_file``, and ``passphrase``.
 * ``backup_key_installed`` is called when a backup private key is installed.
-Available fields are ``key_name``, ``key_type``, ``backup_key_file``, and ``passphrase``.
+  Available fields are ``key_name``, ``key_type``, ``backup_key_file``, and ``passphrase``.
 * ``hpkp_header_installed`` is called when a HPKP header file is installed.
-Available fields are ``key_name``, ``server``, ``header``, and ``hpkp_file``.
+  Available fields are ``key_name``, ``server``, ``header``, and ``hpkp_file``.
 * ``certificate_installed`` is called when a certificate file is installed.
-Available fields are ``key_name``, ``key_type``, ``certificate_name``, and ``certificate_file``.
+  Available fields are ``key_name``, ``key_type``, ``certificate_name``, and ``certificate_file``.
 * ``full_certificate_installed`` is called when a certificate file that includes the root is installed.
-Available fields are ``key_name``, ``key_type``, ``certificate_name``, and ``full_certificate_file``.
+  Available fields are ``key_name``, ``key_type``, ``certificate_name``, and ``full_certificate_file``.
 * ``chain_installed`` is called when a certificate intermediate chain file is installed.
-Available fields are ``key_name``, ``key_type``, ``certificate_name``, and ``chain_file``.
+  Available fields are ``key_name``, ``key_type``, ``certificate_name``, and ``chain_file``.
 * ``full_key_installed`` is called when a private key including the full certificate chain file is installed.
-Available fields are ``key_name``, ``key_type``, ``certificate_name``, and ``full_key_file``.
+  Available fields are ``key_name``, ``key_type``, ``certificate_name``, and ``full_key_file``.
 * ``params_installed`` is called when a params file is installed.
-Available fields are ``key_name``, ``certificate_name``, and ``params_file``.
+  Available fields are ``key_name``, ``certificate_name``, and ``params_file``.
 * ``sct_installed`` is called when a SCT file is installed.
-Available fields are ``key_name``, ``key_type``, ``certificate_name``, ``ct_log_name``, and ``sct_file``.
+  Available fields are ``key_name``, ``key_type``, ``certificate_name``, ``ct_log_name``, and ``sct_file``.
 * ``ocsp_installed`` is called when an OSCP file is installed.
-Available fields are ``key_name``, ``key_type``, ``certificate_name``, and ``ocsp_file``.
+  Available fields are ``key_name``, ``key_type``, ``certificate_name``, and ``ocsp_file``.
 
 Example::
 
