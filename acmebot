@@ -110,7 +110,7 @@ class AcmeManager(object):
     def __init__(self):
         self.script_dir = os.path.dirname(os.path.realpath(__file__))
         self.script_name = os.path.basename(__file__)
-        self.script_version = '1.8'
+        self.script_version = '1.8.1'
 
         argparser = argparse.ArgumentParser(description='ACME Certificate Manager')
         argparser.add_argument('--version', action='version', version='%(prog)s ' + self.script_version)
@@ -1889,13 +1889,19 @@ class AcmeManager(object):
                     transactions.append(self.save_certificate('full_certificate', certificate_name, key_type, certificate_data.certificate,
                                                               chain=certificate_data.chain, root_certificate=root_certificates[key_type],
                                                               dhparam_pem=dhparam_pem, ecparam_pem=ecparam_pem))
+                    self._add_hook('full_certificate_installed', key_name=private_key_name, key_type=key_type, certificate_name=certificate_name,
+                                   full_certificate_file=self._file_path('full_certificate', certificate_name, key_type))
                 if (certificate_data.chain and self._directory('chain')):
                     transactions.append(self.save_chain(certificate_name, key_type, certificate_data.chain))
+                    self._add_hook('chain_installed', key_name=private_key_name, key_type=key_type, certificate_name=certificate_name,
+                                   chain_file=self._file_path('chain', certificate_name, key_type))
                 try:
                     if (self._directory('full_key')):
                         transactions.append(self.save_private_key('full_key', certificate_name, key_type, private_key_data.keys[key_type].key, key_cipher_data,
                                                                   certificate=certificate_data.certificate, chain=certificate_data.chain,
                                                                   dhparam_pem=dhparam_pem, ecparam_pem=ecparam_pem))
+                        self._add_hook('full_key_installed', key_name=private_key_name, key_type=key_type, certificate_name=certificate_name,
+                                       full_key_file=self._file_path('full_key', certificate_name, key_type))
                 except PrivateKeyError as error:
                     self._warn('Unable to encrypt private key ', error, '\n')
                     continue
@@ -1926,12 +1932,16 @@ class AcmeManager(object):
                                 transactions.append(self.save_certificate('full_certificate', certificate_name, key_type, certificate,
                                                                           chain=chain, root_certificate=root_certificates[key_type],
                                                                           dhparam_pem=dhparam_pem, ecparam_pem=ecparam_pem))
+                                self._add_hook('full_certificate_installed', key_name=private_key_name, key_type=key_type, certificate_name=certificate_name,
+                                               full_certificate_file=self._file_path('full_certificate', certificate_name, key_type))
                             try:
                                 if (self._directory('full_key')):
                                     transactions.append(self.save_private_key('full_key', certificate_name, key_type,
                                                                               private_key_data.keys[key_type].key, key_cipher_data,
                                                                               certificate=certificate, chain=chain,
                                                                               dhparam_pem=dhparam_pem, ecparam_pem=ecparam_pem))
+                                    self._add_hook('full_key_installed', key_name=private_key_name, key_type=key_type, certificate_name=certificate_name,
+                                                   full_key_file=self._file_path('full_key', certificate_name, key_type))
                             except PrivateKeyError as error:
                                 self._warn('Unable to encrypt private key ', error, '\n')
                                 continue

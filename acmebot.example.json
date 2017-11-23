@@ -99,6 +99,9 @@
         "backup_key_installed": null,
         "hpkp_header_installed": null,
         "certificate_installed": null,
+        "full_certificate_installed": null,
+        "chain_installed": null,
+        "full_key_installed": null,
         "params_installed": null,
         "sct_installed": null,
         "ocsp_installed": null
