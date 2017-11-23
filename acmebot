@@ -1274,7 +1274,11 @@ class AcmeManager(object):
                     if (key not in self.config[section_name]):
                         self.config[section_name][key] = value
 
-        temp_device = self._device_id(self._directory('temp') if (self._directory('temp')) else tempfile.gettempdir())
+        temp_dir = self._directory('temp') if (self._directory('temp')) else tempfile.gettempdir()
+        self._makedir(temp_dir)
+        if (not os.path.exists(temp_dir)):
+            self._error('Unable to create temp directory: "', temp_dir, '"\n')
+        temp_device = self._device_id(temp_dir)
         for directory_type in ['resource', 'private_key', 'backup_key', 'full_key', 'certificate', 'full_certificate',
                                'chain', 'param', 'challenge', 'hpkp', 'sct', 'archive']:
             directory = self._directory(directory_type)
