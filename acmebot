@@ -174,7 +174,7 @@ class AcmeManager(object):
         self._key_types = ('rsa', 'ecdsa')
         self._config_defaults = {
             'settings': {
-                'slave_mode': False,
+                'follower_mode': False,
                 'log_level': 'debug',
                 'key_size': 4096,
                 'key_curve': 'secp384r1',
@@ -1266,6 +1266,10 @@ class AcmeManager(object):
         self.hooks.clear()
 
     def _validate_config(self):
+        if ('settings' in self.config):     # backward compat with changed config options
+            if (('slave_mode' in self.config['settings']) and ('follower_mode' not in self.config['settings'])):
+                self.config['settings']['follower_mode'] = self.config['settings']['slave_mode']
+
         for section_name, default_section in self._config_defaults.items():
             if (section_name not in self.config):
                 self.config[section_name] = default_section
@@ -1408,7 +1412,7 @@ class AcmeManager(object):
                         if (domain_name not in domain_challenges[zone_name]):
                             domain_challenges[zone_name].append(domain_name)
 
-        if (not self._setting('slave_mode')):
+        if (not self._setting('follower_mode')):
             for zone_name in authorizations:
                 if (zone_name not in domain_challenges):
                     domain_challenges[zone_name] = []
@@ -1427,7 +1431,7 @@ class AcmeManager(object):
                         self.authorizations[domain_name] = authorization_resource
                         self._debug(domain_name, ' already authorized\n')
                     elif (messages.STATUS_PENDING == authorization_resource.body.status):
-                        if (not self._setting('slave_mode')):
+                        if (not self._setting('follower_mode')):
                             authorization_resources[domain_name] = authorization_resource
                         else:
                             self._debug(domain_name, ' not authorized\n')
@@ -1959,7 +1963,7 @@ class AcmeManager(object):
                     for key_type in saved_certificates[certificate_name]:
                         self._status(key_type.upper(), ' certificate ', certificate_name, ' installed\n')
                         self.update_services(self._get_list(key_certificates[certificate_name], 'services'))
-                        if (not self._setting('slave_mode')):
+                        if (not self._setting('follower_mode')):
                             for zone_name in key_certificates[certificate_name]['alt_names']:
                                 if (not self._zone_key(zone_name)):
                                     updated_key_zones.add(zone_name)
@@ -2016,7 +2020,7 @@ class AcmeManager(object):
                     for ct_log_name in ct_submit_logs:
                         self.archive_sct(certificate_name, key_type, ct_log_name, archive_name=private_key_name, archive_date=archive_date)
 
-                    if (not self._setting('slave_mode')):
+                    if (not self._setting('follower_mode')):
                         for zone_name in key_certificates[certificate_name]['alt_names']:
                             if (not self._zone_key(zone_name)):
                                 updated_key_zones.add(zone_name)

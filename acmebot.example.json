@@ -3,7 +3,7 @@
         "email": "<youremail@yourdomain>"
     },
     "settings": {
-        "slave_mode": false,
+        "follower_mode": false,
         "log_level": "debug",
         "key_size": 4096,
         "key_curve": "secp384r1",
