@@ -22,11 +22,11 @@ In addition to automatically issuing and maintaining certificates,
 the tool can also maintain associated HPKP headers and TLSA (DANE) records.
 
 
-Master/Slave Mode
+Master/Follower Mode
 -----------------
 
 This tool separates the authorization (domain validation) and certificate issuance processes allowing one machine to maintain authorizations (the master),
-while another machine issues certificates (the slave).
+while another machine issues certificates (the follower).
 This is useful for situations where an isolated server is providing a service, such as XMPP,
 behind a firewall and does not have the ability to perform authorizations over http or configure DNS records,
 but still needs to obtain and periodically renew one or more certificates.
@@ -481,10 +481,10 @@ Settings
 Various settings for the tool.
 All of these need only be present when the desired value is different from the default.
 
-* ``slave_mode`` specifies if the tool should run in master or slave mode.
+* ``follower_mode`` specifies if the tool should run in master or follower mode.
   The defalt value is ``false`` (master mode).
   The master will obtain authorizations and issue certificates,
-  a slave will not attempt to obtain authorizations but can issue certificates.
+  a follower will not attempt to obtain authorizations but can issue certificates.
 * ``log_level`` specifies the amount of information written into the log file.
   Possible values are ``null``, ``"normal"``, ``"verbose"``, ``"debug"``, and ``"detail"``.
   ``"verbose"``, ``"debug"``, and ``"detail"`` settings correlate to the ``--verbose``, ``--debug`` and ``--detail`` command-line options.
@@ -542,8 +542,8 @@ All of these need only be present when the desired value is different from the d
   Automatic rollover and expiration notices can be disabled by setting this to ``0`` or ``null``.
 * ``auto_rollover`` specifies if the tool should automatically rollover private keys that have expired.
   The default value is ``false``.
-  Note that when running in a master/slave configuration and sharing private keys between the master and slave,
-  key rollovers must be performed on the master and manually transferred to the slave,
+  Note that when running in a master/follower configuration and sharing private keys between the master and follower,
+  key rollovers must be performed on the master and manually transferred to the follower,
   therefore automatic rollovers should not be used unless running stand-alone.
 * ``max_dns_lookup_attempts`` specifies the number of times to check for deployed DNS records before attempting authorizations.
   The default value is ``60``.
@@ -571,7 +571,7 @@ Example::
     {
         ...
         "settings": {
-            "slave_mode": false,
+            "follower_mode": false,
             "log_level": "debug",
             "key_size": 4096,
             "key_curve": "secp384r1",
@@ -908,7 +908,7 @@ it is possible to have the tool automatically maintain TLSA records for each cer
 Note that this requires configuring zone update keys for each zone containing a TLSA record.
 
 When using local DNS updates, the ``reload_zone`` command will be called after certificates are issued, renewed, or modified to allow TLSA records to be updated by a tool such as `bindtool`_.
-The ``reload_zone`` command will not be called in slave mode.
+The ``reload_zone`` command will not be called in follower mode.
 
 To specify TLSA records, add a ``tlsa_records`` name/object pair to each certificate definition, either in the ``certificates`` or ``private_keys`` section.
 TLSA records are specified per DNS zone, similar to ``alt_names``,
@@ -1005,10 +1005,10 @@ Authorizations
 
 This section specifies a set of host name authorizations to obtain without issuing certificates.
 
-This is used when running in a master/slave configuration,
+This is used when running in a master/follower configuration,
 the master, having access to local or remote DNS updates or an HTTP server,
 obtains authorizations,
-while the slave issues the certificates.
+while the follower issues the certificates.
 
 It is not necessary to specify host name authorizations for any host names used by configured certificates,
 but it is not an error to have overlap.
@@ -1146,8 +1146,8 @@ The ``name`` field is the name of the private key or certificate.
 
 * ``log`` specifies the name of the log file.
 * ``private_key`` specifies the name of primary private key files.
-* ``backup_key`` speficies the name of backup private key files.
-* ``full_key`` speficies the name of primary private key files that include the certificate chain.
+* ``backup_key`` specifies the name of backup private key files.
+* ``full_key`` specifies the name of primary private key files that include the certificate chain.
 * ``certificate`` specifies the name of certificate files.
 * ``full_certificate`` specifies the name of certificate files that include the root certificate.
 * ``chain`` specifies the name of intemediate certificate files.
@@ -1257,6 +1257,12 @@ but will not otherwise affect the operation of this tool.
   Available fields are ``key_name``, ``server``, ``header``, and ``hpkp_file``.
 * ``certificate_installed`` is called when a certificate file is installed.
   Available fields are ``key_name``, ``key_type``, ``certificate_name``, and ``certificate_file``.
+* ``full_certificate_installed`` is called when a certificate file that includes the root is installed.
+  Available fields are ``key_name``, ``key_type``, ``certificate_name``, and ``full_certificate_file``.
+* ``chain_installed`` is called when a certificate intermediate chain file is installed.
+  Available fields are ``key_name``, ``key_type``, ``certificate_name``, and ``chain_file``.
+* ``full_key_installed`` is called when a private key including the full certificate chain file is installed.
+  Available fields are ``key_name``, ``key_type``, ``certificate_name``, and ``full_key_file``.
 * ``params_installed`` is called when a params file is installed.
   Available fields are ``key_name``, ``certificate_name``, and ``params_file``.
 * ``sct_installed`` is called when a SCT file is installed.
@@ -1572,48 +1578,48 @@ You may wish to run the tool without the input file first to verify the private 
 
 
 
-Master/Slave Setup
+Master/Follower Setup
 ==================
 
-In some circumstances, it is useful to run the tool in a master/slave configuration.
+In some circumstances, it is useful to run the tool in a master/follower configuration.
 In this setup, the master performs domain authorizations
-while the slave issues and maintains certificates.
+while the follower issues and maintains certificates.
 
-This setup is useful when the slave machine does not have the ability to perform domain authorizations,
+This setup is useful when the follower machine does not have the ability to perform domain authorizations,
 for example, an XMPP server behind a firewall that does not have port 80 open or access to a DNS server.
 
-To create a master/slave setup,
+To create a master/follower setup,
 first install and configure the tool on the master server as normal.
 The master server may also issue certificates, but it is not necessary.
 
 Configure any required domain authorizations (see the `Authorizations <#authorizations>`_ section) on the master and run the tool.
 
-Then install the tool on the slave server.
-It is not necessary to configure HTTP challenges or remote DNS update keys on the slave.
+Then install the tool on the follower server.
+It is not necessary to configure HTTP challenges or remote DNS update keys on the follower.
 
-Before running the tool on the slave server,
+Before running the tool on the follower server,
 copy the client key and registration files from the master server.
 These files are normally found in ``/var/local/acmebot`` but an alternate location can be configured in the ``resource`` directory setting.
 
-If the master server also issues certificates for the same domain names or parent domain names as the slave,
-you may want to copy the primary and backup private keys for those certificates to the slave.
-This will cause the slave certificates to use the same keys allowing HPKP headers to safey include subdomains.
+If the master server also issues certificates for the same domain names or parent domain names as the follower,
+you may want to copy the primary and backup private keys for those certificates to the follower.
+This will cause the follower certificates to use the same keys allowing HPKP headers to safey include subdomains.
 
-Set the slave ``slave_mode`` setting to ``true`` and configure desired certificates on the slave.
+Set the follower ``follower_mode`` setting to ``true`` and configure desired certificates on the follower.
 
-Run the tool on the slave server.
+Run the tool on the follower server.
 
-When setting up cron jobs for the master and slave,
-be sure the slave runs several minutes after the master so that all authorizations will be complete.
+When setting up cron jobs for the master and follower,
+be sure the follower runs several minutes after the master so that all authorizations will be complete.
 The master can theoretically take (``max_dns_lookup_attempts`` x ``dns_lookup_delay``) + (``max_authorization_attempts`` x ``authorization_delay``) seconds to obtain domain authorizations (15 minutes at the default settings).
 
-It is possible to run several slave servers for each master,
-the slave cron jobs should not all run at the same time.
+It is possible to run several follower servers for each master,
+the follower cron jobs should not all run at the same time.
 
-The slave server may maintain TLSA records if remote DNS updates are configured on the slave,
-otherwise it is recommended to use spki selectors for TLSA records so that certificate renewals on the slave will not invalidate TLSA records.
+The follower server may maintain TLSA records if remote DNS updates are configured on the follower,
+otherwise it is recommended to use spki selectors for TLSA records so that certificate renewals on the follower will not invalidate TLSA records.
 
-If private keys are shared between a master and slave,
+If private keys are shared between a master and follower,
 be sure to turn off ``auto_rollover`` and only perform private key rollovers on the master.
-After a private key rollover, copy the new primary and backup private key files to the slaves.
-The slave will automatically detect the new private key and re-issue certificates on the next run.
+After a private key rollover, copy the new primary and backup private key files to the followers.
+The follower will automatically detect the new private key and re-issue certificates on the next run.
