@@ -1319,6 +1319,9 @@ class AcmeManager(object):
                 common_name = key_certificates[certificate_name].get('common_name', certificate_name)
                 if ('alt_names' not in key_certificates[certificate_name]):
                     private_keys[private_key_name]['certificates'][certificate_name]['alt_names'] = {common_name: ['@']}
+                elif ('@' in key_certificates[certificate_name]['alt_names']):
+                    key_certificates[certificate_name]['alt_names'][common_name] = key_certificates[certificate_name]['alt_names']['@']
+                    del key_certificates[certificate_name]['alt_names']['@']
                 for zone_name in key_certificates[certificate_name].get('alt_names', {}):
                     if (common_name in self._get_domain_names(key_certificates[certificate_name]['alt_names'], zone_name)):
                         break
