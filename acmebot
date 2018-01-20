@@ -32,7 +32,8 @@ import DNS
 
 import OpenSSL
 
-from acme import client, jose, messages
+import josepy
+from acme import client, messages
 
 from asn1crypto import ocsp as asn1_ocsp
 from asn1crypto import x509 as asn1_x509
@@ -916,7 +917,7 @@ class AcmeManager(object):
     def load_certificate(self, file_type, file_name, key_type):
         try:
             with open(self._file_path(file_type, file_name, key_type), 'r') as certificate_file:
-                return jose.ComparableX509(OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, certificate_file.read().encode('ascii')))
+                return josepy.ComparableX509(OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, certificate_file.read().encode('ascii')))
         except Exception:
             return None
 
@@ -967,7 +968,7 @@ class AcmeManager(object):
                     index = 1
             certificate_pems = re.findall('-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----', pem_data, re.DOTALL)[index:]
             for certificate_pem in certificate_pems:
-                chain.append(jose.ComparableX509(OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, certificate_pem.encode('ascii'))))
+                chain.append(josepy.ComparableX509(OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, certificate_pem.encode('ascii'))))
         except Exception:
             pass
         return chain
@@ -1338,11 +1339,11 @@ class AcmeManager(object):
         client_key_path = os.path.join(resource_dir, 'client_key.json')
         if (os.path.isfile(client_key_path)):
             with open(client_key_path) as client_key_file:
-                self.client_key = jose.JWKRSA.fields_from_json(json.load(client_key_file))
+                self.client_key = josepy.JWKRSA.fields_from_json(json.load(client_key_file))
                 self._detail('Loaded clent key ', client_key_path, '\n')
         else:
             self._status('Client key not present, generating\n')
-            self.client_key = jose.JWKRSA(key=rsa.generate_private_key(public_exponent=65537, key_size=4096, backend=default_backend()))
+            self.client_key = josepy.JWKRSA(key=rsa.generate_private_key(public_exponent=65537, key_size=4096, backend=default_backend()))
             try:
                 with self._open_file(client_key_path, 'w', 0o600) as client_key_file:
                     json.dump(self.client_key.fields_to_partial_json(), client_key_file)
@@ -1767,7 +1768,7 @@ class AcmeManager(object):
                     self._info('Requesting ', key_type.upper(), ' certificate for ', common_name,
                                (' with alt names: ' + ', '.join(alt_names)) if (alt_names) else '', '\n')
                     try:
-                        certificate_resource = self.acme_client.request_issuance(jose.ComparableX509(csr),
+                        certificate_resource = self.acme_client.request_issuance(josepy.ComparableX509(csr),
                                                                                  [self.authorizations[domain_name] for domain_name in alt_names])
                     except Exception as error:
                         self._warn(key_type.upper(), ' certificate issuance failed\n', error, '\n')
