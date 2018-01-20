@@ -1,8 +1,8 @@
-appdirs>=1.4.0
-pyparsing>=2.1.10
+appdirs>=1.4.3
+pyparsing>=2.2.0
 packaging>=16.8
-pyOpenSSL>=16.2
+pyOpenSSL>=17.5.0
 py3dns>=3.1.0
-cryptography>=1.7.1
-asn1crypto>=0.22.0
-acme>=0.11.1
+cryptography>=2.1.4
+asn1crypto>=0.24.0
+acme>=0.21.0
