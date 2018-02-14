@@ -21,6 +21,7 @@ import pwd
 import random
 import re
 import shlex
+import socket
 import struct
 import subprocess
 import sys
@@ -112,7 +113,7 @@ class AcmeManager(object):
     def __init__(self):
         self.script_dir = os.path.dirname(os.path.realpath(__file__))
         self.script_name = os.path.basename(__file__)
-        self.script_version = '1.8.1'
+        self.script_version = '1.9.0'
 
         argparser = argparse.ArgumentParser(description='ACME Certificate Manager')
         argparser.add_argument('--version', action='version', version='%(prog)s ' + self.script_version)
@@ -150,6 +151,9 @@ class AcmeManager(object):
         argparser.add_argument('-a', '--auth',
                                action='store_true', dest='auth', default=False,
                                help='Update authorizations only')
+        argparser.add_argument('-C', '--certs',
+                               action='store_true', dest='certs', default=False,
+                               help='Update certificates only')
         argparser.add_argument('-t', '--tlsa',
                                action='store_true', dest='tlsa', default=False,
                                help='Update TLSA records only')
@@ -159,6 +163,9 @@ class AcmeManager(object):
         argparser.add_argument('-o', '--ocsp',
                                action='store_true', dest='ocsp', default=False,
                                help='Update OCSP responses only')
+        argparser.add_argument('-V', '--verify',
+                               action='store_true', dest='verify', default=False,
+                               help='Verify certificate installation only')
         argparser.add_argument('-p', '--pass', nargs=1, default=False,
                                action='store', dest='passphrase', metavar='PASSPHRASE',
                                help='Passphrase for private keys')
@@ -203,7 +210,8 @@ class AcmeManager(object):
                 'max_run_delay': 3600,
                 'acme_directory_url': 'https://acme-v01.api.letsencrypt.org/directory',
                 'reload_zone_command': '/etc/bind/reload-zone.sh',
-                'nsupdate_command': '/usr/bin/nsupdate'
+                'nsupdate_command': '/usr/bin/nsupdate',
+                'verify': None
             },
             'directories': {
                 'pid': '/var/run',
@@ -915,6 +923,10 @@ class AcmeManager(object):
     def _certificate_digest(self, certificate, digest='sha256'):
         return certificate.wrapped.digest(digest).decode('ascii').replace(':', '').lower()
 
+    def _certificates_match(self, certificate1, certificate2):
+        return (OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_PEM, certificate1) ==
+                OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_PEM, certificate2))
+
     def load_certificate(self, file_type, file_name, key_type):
         try:
             with open(self._file_path(file_type, file_name, key_type), 'r') as certificate_file:
@@ -1292,6 +1304,25 @@ class AcmeManager(object):
                 self._error('Temp directory must be on same device as ', directory_type, ' directory\n')
         FileTransaction.tempdir = self._directory('temp')
 
+        default_verify = self._setting_list('verify')
+        if (default_verify):
+            verify_list = []
+            for verify in default_verify:
+                if (isinstance(verify, int)):
+                    verify = {'port': verify, 'starttls': None}
+                elif (isinstance(verify, dict)):
+                    if ('port' not in verify):
+                        self._error('verify missing port definition')
+                    if (isinstance(verify['port'], str)):
+                        try:
+                            verify['port'] = int(verify['port'])
+                        except:
+                            self._error('Invalid port definition ', verify['port'])
+                    if ('starttls' not in verify):
+                        verify['starttls'] = None
+                verify_list.append(verify)
+            self.config['settings']['verify'] = verify_list
+
         private_keys = self.config.get('private_keys', collections.OrderedDict())
         if ('certificates' in self.config):     # convert bare certificate definitions to private key definitions
             certificates = self.config['certificates']
@@ -1330,6 +1361,30 @@ class AcmeManager(object):
                 else:
                     self._error('Certificate common name "', common_name, '" not listed in alt_names\n')
                 certificate_key_types |= set(self._get_list(key_certificates[certificate_name], 'key_types', self._key_types))
+                if ('verify' in key_certificates[certificate_name]):
+                    alt_names = []
+                    for zone_name in key_certificates[certificate_name]['alt_names']:
+                        alt_names += self._get_domain_names(key_certificates[certificate_name]['alt_names'], zone_name)
+                    verify_list = []
+                    for verify in self._get_list(key_certificates[certificate_name], 'verify'):
+                        if (isinstance(verify, int)):
+                            verify = {'port': verify, 'starttls': None}
+                        elif (isinstance(verify, dict)):
+                            if ('port' not in verify):
+                                self._error('verify missing port definition')
+                            if (isinstance(verify['port'], str)):
+                                try:
+                                    verify['port'] = int(verify['port'])
+                                except:
+                                    self._error('Invalid port definition ', verify['port'])
+                            if ('starttls' not in verify):
+                                verify['starttls'] = None
+                            if ('hosts' in verify):
+                                for host_name in self._get_list(verify, 'hosts'):
+                                    if (host_name not in alt_names):
+                                        self._error('Verify host ', host_name, ' not specified in certificate ', certificate_name, '\n')
+                        verify_list.append(verify)
+                    private_keys[private_key_name]['certificates'][certificate_name]['verify'] = verify_list
             key_options = self._get_key_options(private_keys[private_key_name])
             private_keys[private_key_name]['key_types'] = [key_type for key_type in key_options if (key_type in certificate_key_types)]
         self.config['private_keys'] = private_keys
@@ -2265,6 +2320,134 @@ class AcmeManager(object):
                 self._warn('Unable to save OCSP responses for ', private_key_name, '\n', error, '\n')
                 self._clear_hooks()
 
+    def _verify_certificate_installation(self, certificate_name, certificate, chain, key_type, host_name, port_number, starttls, cipher_list):
+        ssl_context = OpenSSL.SSL.Context(OpenSSL.SSL.SSLv23_METHOD)
+        ssl_context.set_cipher_list(cipher_list)
+
+        try:
+            addr_info = socket.getaddrinfo(host_name, port_number, proto=socket.IPPROTO_TCP)
+        except Exception as error:
+            self._warn('Unable to get address for ', host_name, '\n', error, '\n')
+            return
+
+        for addr in addr_info:
+            host_desc = host_name + ' at ' + (('[' + addr[4][0] + ']') if (socket.AF_INET6 == addr[0]) else addr[4][0]) + ':' + str(port_number)
+            try:
+                self._detail('Connecting to ', host_desc, ' with ', key_type.upper(), ' ciphers\n')
+                sock = socket.socket(addr[0], socket.SOCK_STREAM)
+                sock.connect(addr[4])
+
+                if (starttls):
+                    sock.settimeout(30)
+                    if ('smtp' == starttls.lower()):
+                        self._detail('SMTP: ', sock.recv(4096))
+                        sock.send(b'ehlo acmebot.linss.com\r\n')
+                        buffer = sock.recv(4096)
+                        self._detail('SMTP: ', buffer)
+                        if (b'STARTTLS' not in buffer):
+                            self._warn('STARTTLS not supported on ', host_desc, '\n')
+                            sock.shutdown()
+                            sock.close()
+                            continue
+                        sock.send(b'starttls\r\n')
+                        self._detail('SMTP: ', sock.recv(4096))
+                    elif ('pop3' == starttls.lower()):
+                        self._detail('POP3: ', sock.recv(4096))
+                        sock.send(b'STLS\r\n')
+                        self._detail('POP3: ', sock.recv(4096))
+                    elif ('imap' == starttls.lower()):
+                        self._detail('IMAP: ', sock.recv(4096))
+                        sock.send(b'STARTTLS\r\n')
+                        self._detail('IMAP: ', sock.recv(4096))
+                    elif ('ftp' == starttls.lower()):
+                        self._detail('FTP: ', sock.recv(4096))
+                        sock.send(b'AUTH TLS\r\n')
+                        self._detail('FTP: ', sock.recv(4096))
+                    elif ('xmpp' == starttls.lower()):
+                        sock.send('<stream:stream xmlns:stream="http://etherx.jabber.org/streams" '
+                                  'xmlns="jabber:client" to="{host}" version="1.0">\n'.format(host=host_name).encode('ascii'))
+                        self._detail('XMPP: ', sock.recv(4096))
+                        sock.send(b'<starttls xmlns="urn:ietf:params:xml:ns:xmpp-tls"/>')
+                        self._detail('XMPP: ', sock.recv(4096))
+                    else:
+                        self._warn('Unsuppoprted STARTTLS type: ', starttls)
+                        return
+                    sock.settimeout(None)
+
+                ssl_sock = OpenSSL.SSL.Connection(ssl_context, sock)
+                ssl_sock.set_connect_state()
+                ssl_sock.set_tlsext_host_name(host_name.encode('ascii'))
+                ssl_sock.do_handshake()
+                self._detail('Connected to ', ssl_sock.get_servername(), ', protocol ', ssl_sock.get_protocol_version_name(),
+                             ', cipher ', ssl_sock.get_cipher_name(), '\n')
+                installed_certificates = ssl_sock.get_peer_cert_chain()
+                ssl_sock.shutdown()
+                ssl_sock.close()
+                installed_certificate = installed_certificates[0]
+                installed_chain = installed_certificates[1:]
+                if (self._certificates_match(certificate.wrapped, installed_certificate)):
+                    self._info(key_type.upper(), ' certificate ', certificate_name, ' present for ', host_desc, '\n')
+                else:
+                    self._warn('ERROR: ', key_type.upper(), ' certificate mismatch for ', host_desc, '\n')
+                if (len(chain) != len(installed_chain)):
+                    self._warn('ERROR: ', key_type.upper(), ' certificate chain length mismatch for ', host_desc, ', got ', len(installed_chain),
+                               ' intermediate(s), expected ', len(chain), '\n')
+                else:
+                    for intermediate, installed_intermediate in zip(chain, installed_chain):
+                        if (self._certificates_match(intermediate.wrapped, installed_intermediate)):
+                            self._info('Intermediate ', key_type.upper(), ' certificate "', intermediate.wrapped.get_subject().commonName,
+                                       '" present for ', host_desc, '\n')
+                        else:
+                            self._warn('ERROR: Intermediate ', key_type.upper(), ' certificate "', intermediate.wrapped.get_subject().commonName,
+                                       '" mismatch for ', host_desc, '\n')
+            except Exception as error:
+                self._warn('Unable to connect to ', host_desc, '\n', error, '\n')
+
+    def verify_certificate_installation(self, private_key_names):
+        key_type_ciphers = {}
+        ssl_context = OpenSSL.SSL.Context(OpenSSL.SSL.SSLv23_METHOD)
+        ssl_sock = OpenSSL.SSL.Connection(ssl_context, socket.socket())
+        all_ciphers = ssl_sock.get_cipher_list()
+        key_type_ciphers['rsa'] = ':'.join([cipher_name for cipher_name in all_ciphers if 'RSA' in cipher_name]).encode('ascii')
+        key_type_ciphers['ecdsa'] = ':'.join([cipher_name for cipher_name in all_ciphers if 'ECDSA' in cipher_name]).encode('ascii')
+
+        private_keys = self._config('private_keys')
+        for private_key_name in private_keys:
+            if (private_key_names and (private_key_name not in private_key_names)):
+                continue
+
+            key_options = self._get_key_options(private_keys[private_key_name])
+            if (not key_options):
+                self._warn('No configured private key types for ', private_key_name, '\n')
+                continue
+
+            key_certificates = private_keys[private_key_name].get('certificates', {})
+            for certificate_name in key_certificates:
+                verify_list = self._option(key_certificates[certificate_name], 'verify')
+                if (verify_list):
+                    alt_names = []
+                    for zone_name in key_certificates[certificate_name]['alt_names']:
+                        alt_names += self._get_domain_names(key_certificates[certificate_name]['alt_names'], zone_name)
+
+                    certificate_key_types = self._get_list(key_certificates[certificate_name], 'key_types', key_options.keys())
+                    for key_type in certificate_key_types:
+                        certificate = self.load_certificate('certificate', certificate_name, key_type)
+                        chain = self.load_chain(certificate_name, key_type)
+                        if (not certificate):
+                            self._warn(key_type.upper(), ' certificate ', certificate_name, ' not found\n')
+                            continue
+
+                        for verify in verify_list:
+                            if ('key_types' in verify):
+                                if (key_type not in self._get_list(verify, 'key_types')):
+                                    continue
+                            if ('hosts' not in verify):
+                                verify['hosts'] = alt_names
+                            for host_name in self._get_list(verify, 'hosts'):
+                                if (host_name in alt_names):
+                                    self._verify_certificate_installation(certificate_name, certificate, chain, key_type,
+                                                                          host_name, verify['port'], verify['starttls'], key_type_ciphers[key_type])
+
     def _process_running(self, pid_file_path):
         try:
             with open(pid_file_path) as pid_file:
@@ -2291,26 +2474,32 @@ class AcmeManager(object):
                              str(delay_seconds % 60), ' seconds\n')
                 time.sleep(delay_seconds)
             self.connect_client()
+            if (not (self.args.revoke or self.args.auth or self.args.tlsa or self.args.sct or self.args.ocsp or self.args.verify)):
+                self.args.auth = True
+                self.args.certs = True
+                self.args.tlsa = True
+                self.args.sct = True
+                self.args.ocsp = True
+                self.args.verify = True
+
             if (self.args.revoke):
                 if (not self.args.private_key_names):
                     self._error('Revocation must explicitly specify private key names\n')
                 else:
                     self.revoke_certificates(self.args.private_key_names)
-            elif (self.args.auth):
+            if (self.args.auth):
                 self.process_authorizations(self.args.private_key_names)
-            elif (self.args.tlsa):
-                self.update_tlsa_records(self.args.private_key_names)
-            elif (self.args.sct):
-                self.update_signed_certificate_timestamps(self.args.private_key_names)
-            elif (self.args.ocsp):
-                self.update_ocsp_responses(self.args.private_key_names)
-            else:
-                self.process_authorizations(self.args.private_key_names)
+            if (self.args.certs):
                 self.process_certificates(self.args.private_key_names)
+            if (self.args.tlsa):
                 self.update_tlsa_records(self.args.private_key_names)
+            if (self.args.sct):
                 self.update_signed_certificate_timestamps(self.args.private_key_names)
+            if (self.args.ocsp):
                 self.update_ocsp_responses(self.args.private_key_names)
             self.reload_services()
+            if (self.args.verify):
+                self.verify_certificate_installation(self.args.private_key_names)
             del self.acme_client
         finally:
             os.remove(pid_file_path)

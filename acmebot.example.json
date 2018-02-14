@@ -190,7 +190,16 @@
             "hpkp_report_uri": null,
             "ocsp_must_staple": false,
             "ocsp_responder_urls": ["http://ocsp.int-x3.letsencrypt.org"],
-            "ct_submit_logs": ["google_icarus", "google_pilot"]
+            "ct_submit_logs": ["google_icarus", "google_pilot"],
+            "verify": [
+                443,
+                {
+                    "port": 25,
+                    "hosts": ["<domain-name>", "<domain-name>"],
+                    "starttls": "smtp",
+                    "key_types": ["rsa", "ecdsa"]
+                }
+            ]
         }
     },
     "private_keys": {
@@ -220,7 +229,16 @@
                     "key_types": ["rsa", "ecdsa"],
                     "ocsp_must_staple": false,
                     "ocsp_responder_urls": ["http://ocsp.int-x3.letsencrypt.org"],
-                    "ct_submit_logs": ["google_icarus", "google_pilot"]
+                    "ct_submit_logs": ["google_icarus", "google_pilot"],
+                    "verify_ports": [
+                        443,
+                        {
+                            "port": 25,
+                            "hosts": ["<domain-name>", "<domain-name>"],
+                            "starttls": "smtp",
+                            "key_types": ["rsa", "ecdsa"]
+                        }
+                    ]
                 }
             },
             "key_types": ["rsa", "ecdsa"],

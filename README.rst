@@ -128,6 +128,12 @@ Each operation that writes key, certificate, or related files have optional hook
 assist in deploying resources to remote servers or coordinating with other tooling.
 
 
+Certificate Installation Verification
+-------------------------------------
+
+This tool can automatically connect to configured servers and verify that the generated certificates are properly served via TLS.
+
+
 Installation
 ============
 
@@ -565,6 +571,8 @@ All of these need only be present when the desired value is different from the d
   If not using local DNS updates, you may set this to ``null`` to avoid warnings.
 * ``nsupdate_command`` specifies the command to perform DNS updates.
   The default value is ``"/usr/bin/nsupdate"``.
+* ``verify`` specifies the default ports to perform installation verification on.
+  The default value is ``null``.
 
 Example::
 
@@ -598,7 +606,8 @@ Example::
             "max_run_delay": 3600,
             "acme_directory_url": "https://acme-v01.api.letsencrypt.org/directory",
             "reload_zone_command": "/etc/bind/reload-zone.sh",
-            "nsupdate_command": "/usr/bin/nsupdate"
+            "nsupdate_command": "/usr/bin/nsupdate",
+            "verify": [443]
         },
         ...
     }
@@ -685,7 +694,7 @@ Example::
 Directory values are treated as Python format strings,
 fields available for directories are: ``name``, ``key_type``, ``suffix``, ``server``.
 The ``name`` field is the name of the private key or certificate.
-The ``"http_challenge"`` directory uses the fields: ``zone``, ``host``, and ``fqdn``, 
+The ``"http_challenge"`` directory uses the fields: ``zone``, ``host``, and ``fqdn``,
 for the zone name, host name (without the zone), and the fully qualified domain name respectively.
 The ``host`` value will be ``"."`` if the fqdn is the same as the zone name.
 
@@ -803,6 +812,8 @@ The name of each certificate is used as the name of the certificate files.
 * ``ct_submit_logs`` specifies the list of certificate transparency logs to submit the certificate to.
   The default value is the value specified in the ``settings`` section.
   The value ``["google_testtube"]`` can be used with the Let's Encrypt staging environment for testing.
+* ``verify`` specifies the list of ports to perform certificate installation verification on.
+  The default value is the value specified in the ``settings`` section.
 
 Example::
 
@@ -829,7 +840,8 @@ Example::
                 "hpkp_report_uri": null,
                 "ocsp_must_staple": false,
                 "ocsp_responder_urls": ["http://ocsp.int-x3.letsencrypt.org"],
-                "ct_submit_logs": ["google_icarus", "google_pilot"]
+                "ct_submit_logs": ["google_icarus", "google_pilot"],
+                "verify": [443]
             }
         }
     }
@@ -870,6 +882,7 @@ Example::
                         "ecparam_curve": "secp384r1",
                         "ocsp_must_staple": true,
                         "ct_submit_logs": ["google_icarus", "google_pilot"],
+                        "verify": [443]
                     },
                     "mail.example.com": {
                         "alt_names": {
@@ -1072,8 +1085,9 @@ Example::
 
 If an ``http_challenge`` directory is configured,
 all domain authorizations will default to http-01.
-To use dns-01 authorizations for selected domain names, 
+To use dns-01 authorizations for selected domain names,
 add an ``http_challenges`` entry configured with a ``null`` value.
+
 
 Zone Update Keys
 ----------------
@@ -1232,7 +1246,7 @@ This section defines the set of hooks that can be called via the shell when give
 Paramaters to hooks are specified using Python format strings.
 Fields available for each hook are described below.
 Output from the hooks will be captured in the log.
-Hooks returing a non-zero status code will generate warnings, 
+Hooks returing a non-zero status code will generate warnings,
 but will not otherwise affect the operation of this tool.
 
 * ``set_dns_challenge`` is called for each DNS challenge record that is set.
@@ -1275,6 +1289,50 @@ Example::
         "hooks": {
             certificate_installed": "scp {certificate_file} remote-server:/etc/ssl/certs/"
         },
+        ...
+    }
+
+
+Certificate Installation Verification
+-------------------------------------
+
+The tool may be configured to perform installation verification of certificates.
+When verifying installation, the tool will connect to every subject alternative host name for each certificate on all avaialable IP addresses,
+per each configured port,
+perform a TLS handshake,
+and compare the served certificate chain to the specified certificate.
+
+Each configured port may be an integer port number,
+or an object specifying connection details.
+
+When using an object, the avaialable fields are:
+
+* ``port`` specifies the port number to connect to.
+  Required.
+* ``starttls`` specifies the STARTTLS mechanism that should be used to initiate a TLS session.
+  Allowed values are: ``null``, ``smtp``, ``pop3``, ``imap``, ``ftp``, and ``xmpp``.
+  The default value is ``null``.
+* ``host_names`` specifies a list of fully qualified domain names to test.
+  This allows testing only a subset of the alternative names specified for the certificate.
+  Each host name must be present as an alternative name for the certificate.
+  The default value is all alternative names.
+* ``key_types`` specifies a list of key types to test.
+  This allows testing only a subset of the avaialable key types.
+  The default value is all avaialable key types.
+
+Example::
+
+    {
+        ...
+        "verify": [
+            443,
+            {
+                "port": 25,
+                "starttls": "smtp",
+                "host_names": "smtp.example.com",
+                "key_types": "rsa"
+            }
+        ]
         ...
     }
 
@@ -1381,9 +1439,11 @@ issue certificates,
 generate backup private keys,
 generate custom Diffie-Hellman parameters,
 install certificate and key files,
-reload services associated to the certificates,
 update TLSA records,
-and retrieve current Signed Certificate Timestamps (SCTs) from configured certificate transparency logs.
+retrieve current Signed Certificate Timestamps (SCTs) from configured certificate transparency logs,
+retrieve OCSP staples,
+reload services associated to the certificates,
+and perform configured certificate installation verification.
 
 Each subsequent run will ensure that all authorizations remain valid,
 check if any backup private keys have passed their expiration date,
@@ -1532,6 +1592,12 @@ OCSP Response Updates
 ---------------------
 
 Use of the ``--ocsp`` option on the command line will limit the tool to only updating configured OCSP response files.
+
+
+Certificate Installation Verification
+-------------------------------------
+
+Use of the ``--verify`` option on the command line will limit the tool to only performing certificate installation verification.
 
 
 Private Key Encryption
