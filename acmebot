@@ -2401,7 +2401,7 @@ class AcmeManager(object):
                             self._warn('ERROR: Intermediate ', key_type.upper(), ' certificate "', intermediate.wrapped.get_subject().commonName,
                                        '" mismatch for ', host_desc, '\n')
             except Exception as error:
-                self._warn('Unable to connect to ', host_desc, '\n', error, '\n')
+                self._warn('Unable to connect to ', host_desc, ' via ', key_type.upper(), '\n', error, '\n')
 
     def verify_certificate_installation(self, private_key_names):
         key_type_ciphers = {}

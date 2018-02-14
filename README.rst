@@ -1312,7 +1312,7 @@ When using an object, the avaialable fields are:
 * ``starttls`` specifies the STARTTLS mechanism that should be used to initiate a TLS session.
   Allowed values are: ``null``, ``smtp``, ``pop3``, ``imap``, ``ftp``, and ``xmpp``.
   The default value is ``null``.
-* ``host_names`` specifies a list of fully qualified domain names to test.
+* ``hosts`` specifies a list of fully qualified domain names to test.
   This allows testing only a subset of the alternative names specified for the certificate.
   Each host name must be present as an alternative name for the certificate.
   The default value is all alternative names.
@@ -1329,7 +1329,7 @@ Example::
             {
                 "port": 25,
                 "starttls": "smtp",
-                "host_names": "smtp.example.com",
+                "hosts": "smtp.example.com",
                 "key_types": "rsa"
             }
         ]
