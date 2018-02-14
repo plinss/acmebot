@@ -113,7 +113,7 @@ class AcmeManager(object):
     def __init__(self):
         self.script_dir = os.path.dirname(os.path.realpath(__file__))
         self.script_name = os.path.basename(__file__)
-        self.script_version = '1.9.0'
+        self.script_version = '1.9.1'
 
         argparser = argparse.ArgumentParser(description='ACME Certificate Manager')
         argparser.add_argument('--version', action='version', version='%(prog)s ' + self.script_version)
@@ -2423,7 +2423,7 @@ class AcmeManager(object):
 
             key_certificates = private_keys[private_key_name].get('certificates', {})
             for certificate_name in key_certificates:
-                verify_list = self._option(key_certificates[certificate_name], 'verify')
+                verify_list = self._option_list(key_certificates[certificate_name], 'verify')
                 if (verify_list):
                     alt_names = []
                     for zone_name in key_certificates[certificate_name]['alt_names']:
@@ -2441,9 +2441,7 @@ class AcmeManager(object):
                             if ('key_types' in verify):
                                 if (key_type not in self._get_list(verify, 'key_types')):
                                     continue
-                            if ('hosts' not in verify):
-                                verify['hosts'] = alt_names
-                            for host_name in self._get_list(verify, 'hosts'):
+                            for host_name in self._get_list(verify, 'hosts', alt_names):
                                 if (host_name in alt_names):
                                     self._verify_certificate_installation(certificate_name, certificate, chain, key_type,
                                                                           host_name, verify['port'], verify['starttls'], key_type_ciphers[key_type])
