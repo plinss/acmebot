@@ -113,7 +113,7 @@ class AcmeManager(object):
     def __init__(self):
         self.script_dir = os.path.dirname(os.path.realpath(__file__))
         self.script_name = os.path.basename(__file__)
-        self.script_version = '1.9.1'
+        self.script_version = '1.9.2'
 
         argparser = argparse.ArgumentParser(description='ACME Certificate Manager')
         argparser.add_argument('--version', action='version', version='%(prog)s ' + self.script_version)
