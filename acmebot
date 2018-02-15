@@ -718,18 +718,21 @@ class AcmeManager(object):
         self.updated_services.update(services)
 
     def reload_services(self):
+        reloaded = False
         for service_name in self.updated_services:
             service_command = self._service(service_name)
             if (service_command):
                 self._debug('Reloading service ', service_name, '\n')
                 try:
                     output = subprocess.check_output(service_command, shell=True, stderr=subprocess.STDOUT)
+                    reloaded = True
                     if (output):
                         self._warn('Service ', service_name, ' responded to reload with:\n', output, '\n')
                 except subprocess.CalledProcessError as error:
                     self._warn('Service ', service_name, ' reload failed, code: ', error.returncode, '\n', error.output, '\n')
             else:
                 self._warn('Service ', service_name, ' does not have registered reload command\n')
+        return reloaded
 
     def generate_rsa_key(self, key_size):
         key = OpenSSL.crypto.PKey()
@@ -2370,7 +2373,7 @@ class AcmeManager(object):
                         sock.send(b'<starttls xmlns="urn:ietf:params:xml:ns:xmpp-tls"/>')
                         self._detail('XMPP: ', sock.recv(4096))
                     else:
-                        self._warn('Unsuppoprted STARTTLS type: ', starttls)
+                        self._warn('Unsuppoprted STARTTLS type: ', starttls, '\n')
                         return
                     sock.settimeout(None)
 
@@ -2495,7 +2498,8 @@ class AcmeManager(object):
                 self.update_signed_certificate_timestamps(self.args.private_key_names)
             if (self.args.ocsp):
                 self.update_ocsp_responses(self.args.private_key_names)
-            self.reload_services()
+            if (self.reload_services() and self.args.verify):
+                time.sleep(5)   # allow time for services to reload before verification
             if (self.args.verify):
                 self.verify_certificate_installation(self.args.private_key_names)
             del self.acme_client

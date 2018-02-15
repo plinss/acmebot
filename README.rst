@@ -1576,6 +1576,13 @@ Authorization Only
 Use of the ``--auth`` option on the command line will limit the tool to only performing domain autorizations.
 
 
+Certificates Only
+-----------------
+
+Use of the ``--certs`` option on the command line will limit the tool to only issuing and renewing certificates and keys,
+and updating related files such as Diffie-Hellman paramaters and HPKP headers.
+
+
 Remote TLSA Updates
 -------------------
 
@@ -1598,6 +1605,14 @@ Certificate Installation Verification
 -------------------------------------
 
 Use of the ``--verify`` option on the command line will limit the tool to only performing certificate installation verification.
+
+
+Multiple Operations
+-------------------
+
+The ``--auth``, ``--certs``, ``--tlsa``, ``--sct``, ``-ocsp``, and ``--verify`` options may be combined to perform a combinations of operations.
+If none of these options are specified, all operations will be performed as necessary and configured.
+The order of the operations will not be affected by the order of the command line options.
 
 
 Private Key Encryption
