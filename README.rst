@@ -1510,6 +1510,8 @@ Normal output may be supressed by using the ``--quiet`` option.
 
 Error and warning output will be sent to stderr and cannot be supressed.
 
+The output can be colorized by type by adding the ``--color`` option.
+
 
 Private Key Rollover
 --------------------

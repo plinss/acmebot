@@ -130,6 +130,9 @@ class AcmeManager(object):
         argparser.add_argument('-D', '--detail',
                                action='store_true', dest='detail', default=False,
                                help='Print more detailed debugging information to stdout')
+        argparser.add_argument('--color',
+                               action='store_true', dest='color', default=False,
+                               help='Colorize output')
         argparser.add_argument('-c', '--config',
                                dest='config_path', default=self.script_name + '.json', metavar='CONFIG_PATH',
                                help='Specify file path for config')
@@ -320,6 +323,36 @@ class AcmeManager(object):
                 }
             }
         }
+        self._color_codes = {
+            'black': 30,
+            'red': 31,
+            'green': 32,
+            'yellow': 33,
+            'blue': 34,
+            'magenta': 35,
+            'cyan': 36,
+            'light gray': 37,
+            'dark gray': 90,
+            'light red': 91,
+            'light green': 92,
+            'light yellow': 93,
+            'light blue': 94,
+            'light magenta': 95,
+            'light cyan': 96,
+            'white': 97
+        }
+        self._style_codes = {
+            'normal': 0,
+            'bold': 1,
+            'bright': 1,
+            'dim': 2,
+            'underline': 4,
+            'underlined': 4,
+            'blink': 5,
+            'reverse': 7,
+            'invert': 7,
+            'hidden': 8
+        }
 
     def _load_config(self, file_path, search_paths=[]):
         search_paths = [''] if (os.path.isabs(file_path)) else search_paths
@@ -339,6 +372,11 @@ class AcmeManager(object):
             message += str(arg, 'utf-8', 'replace') if isinstance(arg, bytes) else str(arg)
         return message
 
+    def _colorize(self, color, style, message):
+        if (self.args.color):
+            return '\033[{style};{color}m{message}\033[0m'.format(color=self._color_codes[color], style=self._style_codes[style], message=message)
+        return message
+
     def _status(self, *args):
         if (not self.args.quiet):
             sys.stdout.write(self._message(*args))
@@ -347,31 +385,31 @@ class AcmeManager(object):
 
     def _info(self, *args):
         if ((self.args.verbose or self.args.debug or self.args.detail) and not self.args.quiet):
-            sys.stdout.write(self._message(*args))
+            sys.stdout.write(self._colorize('yellow', 'normal', self._message(*args)))
         if (self._setting('log_level') in ['verbose', 'debug', 'detail']):
             self._log(*args)
 
     def _debug(self, *args):
         if ((self.args.debug or self.args.detail) and not self.args.quiet):
-            sys.stdout.write(self._message(*args))
+            sys.stdout.write(self._colorize('dark gray', 'normal', self._message(*args)))
         if (self._setting('log_level') in ['debug', 'detail']):
             self._log(*args)
 
     def _detail(self, *args):
         if (self.args.detail and not self.args.quiet):
-            sys.stdout.write(self._message(*args))
+            sys.stdout.write(self._colorize('light gray', 'normal', self._message(*args)))
         if (self._setting('log_level') == 'detail'):
             self._log(*args)
 
     def _warn(self, *args):
         if (not self.args.quiet):
-            sys.stderr.write(self._message(*args))
+            sys.stderr.write(self._colorize('red', 'normal', self._message(*args)))
         if (self._setting('log_level') in ['normal', 'debug', 'verbose']):
             self._log(*args)
 
     def _error(self, *args):
         message = self._message(*args)
-        sys.stderr.write(message)
+        sys.stderr.write(self._colorize('red', 'bold', message))
         self._log(message)
         raise AcmeError(message)
 
@@ -1814,8 +1852,8 @@ class AcmeManager(object):
                 if (issue_certificate_key_types):
                     missing_authorizations = [alt_name for alt_name in alt_names if (alt_name not in self.authorizations)]
                     if (missing_authorizations):
-                        self._status('Unable to issue certificate ', certificate_name, ' due to missing authorization(s) for: ',
-                                     ', '.join(missing_authorizations), '\n')
+                        self._warn('Unable to issue certificate ', certificate_name, ' due to missing authorization(s) for: ',
+                                   ', '.join(missing_authorizations), '\n')
                         if (rolled_private_key):
                             issued_certificates = []    # do not partially install new certificates if private key changed
                             break
@@ -2289,6 +2327,9 @@ class AcmeManager(object):
                                                  ' updated at ', this_update.strftime('%Y-%m-%d %H:%M:%S UTC'), '\n')
                                     if ('good' == ocsp_status):
                                         if (this_update == last_update):
+                                            self._debug('OCSP response for ', key_type.upper(), ' certificate ', certificate_name,
+                                                        ' from ', ocsp_url,
+                                                        ' has not been updated\n')
                                             break
                                         self._info('Saving OCSP response for ', key_type.upper(), ' certificate ', certificate_name,
                                                    ' from ', ocsp_url, '\n')
@@ -2307,9 +2348,9 @@ class AcmeManager(object):
                                                ' OCSP request received "', ocsp_response['response_status'].native, '"',
                                                ' from ', ocsp_url, '\n')
                             elif (ocsp_response is False):
-                                self._detail('OCSP response for ', key_type.upper(), ' certificate ', certificate_name,
-                                             ' from ', ocsp_url,
-                                             ' has not been updated\n')
+                                self._debug('OCSP response for ', key_type.upper(), ' certificate ', certificate_name,
+                                            ' from ', ocsp_url,
+                                            ' has not been updated\n')
                                 break
                         else:
                             self._warn('Unable to retrieve OCSP response for ', key_type.upper(), ' certificate ', certificate_name, '\n')
@@ -2330,13 +2371,13 @@ class AcmeManager(object):
         try:
             addr_info = socket.getaddrinfo(host_name, port_number, proto=socket.IPPROTO_TCP)
         except Exception as error:
-            self._warn('Unable to get address for ', host_name, '\n', error, '\n')
+            self._warn('ERROR: Unable to get address for ', host_name, '\n', error, '\n')
             return
 
         for addr in addr_info:
             host_desc = host_name + ' at ' + (('[' + addr[4][0] + ']') if (socket.AF_INET6 == addr[0]) else addr[4][0]) + ':' + str(port_number)
             try:
-                self._detail('Connecting to ', host_desc, ' with ', key_type.upper(), ' ciphers\n')
+                self._debug('Connecting to ', host_desc, ' with ', key_type.upper(), ' ciphers\n')
                 sock = socket.socket(addr[0], socket.SOCK_STREAM)
                 sock.connect(addr[4])
 
@@ -2360,7 +2401,7 @@ class AcmeManager(object):
                         self._detail('POP3: ', sock.recv(4096))
                     elif ('imap' == starttls.lower()):
                         self._detail('IMAP: ', sock.recv(4096))
-                        sock.send(b'STARTTLS\r\n')
+                        sock.send(b'a001 STARTTLS\r\n')
                         self._detail('IMAP: ', sock.recv(4096))
                     elif ('ftp' == starttls.lower()):
                         self._detail('FTP: ', sock.recv(4096))
@@ -2381,8 +2422,8 @@ class AcmeManager(object):
                 ssl_sock.set_connect_state()
                 ssl_sock.set_tlsext_host_name(host_name.encode('ascii'))
                 ssl_sock.do_handshake()
-                self._detail('Connected to ', ssl_sock.get_servername(), ', protocol ', ssl_sock.get_protocol_version_name(),
-                             ', cipher ', ssl_sock.get_cipher_name(), '\n')
+                self._debug('Connected to ', ssl_sock.get_servername(), ', protocol ', ssl_sock.get_protocol_version_name(),
+                            ', cipher ', ssl_sock.get_cipher_name(), '\n')
                 installed_certificates = ssl_sock.get_peer_cert_chain()
                 ssl_sock.shutdown()
                 ssl_sock.close()
@@ -2404,7 +2445,7 @@ class AcmeManager(object):
                             self._warn('ERROR: Intermediate ', key_type.upper(), ' certificate "', intermediate.wrapped.get_subject().commonName,
                                        '" mismatch for ', host_desc, '\n')
             except Exception as error:
-                self._warn('Unable to connect to ', host_desc, ' via ', key_type.upper(), '\n', error, '\n')
+                self._warn('ERROR: Unable to connect to ', host_desc, ' via ', key_type.upper(), '\n', error, '\n')
 
     def verify_certificate_installation(self, private_key_names):
         key_type_ciphers = {}
