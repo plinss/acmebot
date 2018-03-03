@@ -164,6 +164,9 @@ class AcmeManager(object):
         argparser.add_argument('--color',
                                action='store_true', dest='color', default=False,
                                help='Colorize output')
+        argparser.add_argument('--no-color',
+                               action='store_true', dest='no_color', default=False,
+                               help='Suppress colorized output')
         argparser.add_argument('-c', '--config',
                                dest='config_path', default=self.script_name + '.json', metavar='CONFIG_PATH',
                                help='Specify file path for config')
@@ -219,6 +222,7 @@ class AcmeManager(object):
             'settings': {
                 'follower_mode': False,
                 'log_level': 'debug',
+                'color_output': True,
                 'key_size': 4096,
                 'key_curve': 'secp384r1',
                 'key_cipher': 'blowfish',
@@ -373,10 +377,11 @@ class AcmeManager(object):
             message += str(arg, 'utf-8', 'replace') if isinstance(arg, bytes) else str(arg)
         return message
 
-    def _colorize(self, color, style, message):
-        if (self.args.color):
-            return '\033[{style};{color}m{message}\033[0m'.format(color=self._color_codes[color], style=self._style_codes[style], message=message)
-        return message
+    def _colorize(self, stream, color, style, message):
+        if (stream.isatty() and (self.args.color or self._setting('color_output')) and (not self.args.no_color)):
+            stream.write('\033[{style};{color}m{message}\033[0m'.format(color=self._color_codes[color], style=self._style_codes[style], message=message))
+        else:
+            stream.write(message)
 
     def _status(self, *args):
         if (not self.args.quiet):
@@ -386,31 +391,31 @@ class AcmeManager(object):
 
     def _info(self, *args):
         if ((self.args.verbose or self.args.debug or self.args.detail) and not self.args.quiet):
-            sys.stdout.write(self._colorize('yellow', 'normal', self._message(*args)))
+            self._colorize(sys.stdout, 'yellow', 'normal', self._message(*args))
         if (self._setting('log_level') in ['verbose', 'debug', 'detail']):
             self._log(*args)
 
     def _debug(self, *args):
         if ((self.args.debug or self.args.detail) and not self.args.quiet):
-            sys.stdout.write(self._colorize('dark gray', 'normal', self._message(*args)))
+            self._colorize(sys.stdout, 'dark gray', 'normal', self._message(*args))
         if (self._setting('log_level') in ['debug', 'detail']):
             self._log(*args)
 
     def _detail(self, *args):
         if (self.args.detail and not self.args.quiet):
-            sys.stdout.write(self._colorize('light gray', 'normal', self._message(*args)))
+            self._colorize(sys.stdout, 'light gray', 'normal', self._message(*args))
         if (self._setting('log_level') == 'detail'):
             self._log(*args)
 
     def _warn(self, *args):
         if (not self.args.quiet):
-            sys.stderr.write(self._colorize('red', 'normal', self._message(*args)))
+            self._colorize(sys.stderr, 'red', 'normal', self._message(*args))
         if (self._setting('log_level') in ['normal', 'debug', 'verbose']):
             self._log(*args)
 
     def _error(self, *args):
         message = self._message(*args)
-        sys.stderr.write(self._colorize('red', 'bold', message))
+        self._colorize(sys.stderr, 'red', 'bold', message)
         self._log(message)
         raise AcmeError(message)
 
@@ -862,10 +867,16 @@ class AcmeManager(object):
     def archive_private_key(self, file_type, file_name, key_type, archive_name='', archive_date=None):
         self._archive_file(file_type, self._file_path(file_type, file_name, key_type), archive_name=archive_name, archive_date=archive_date)
 
-    def _time_to_rollover(self, backup_key_timestamp, expiration_days):
+    def _days_until_rollover(self, backup_key_timestamp, expiration_days):
         if (backup_key_timestamp and expiration_days):
             backup_key_modified_time = datetime.datetime.utcfromtimestamp(backup_key_timestamp)
-            return (expiration_days < (datetime.datetime.utcnow() - backup_key_modified_time).days)
+            return (expiration_days - (datetime.datetime.utcnow() - backup_key_modified_time).days)
+        return False
+
+    def _time_to_rollover(self, backup_key_timestamp, expiration_days):
+        days = self._days_until_rollover(backup_key_timestamp, expiration_days)
+        if (days is not False):
+            return (days < 0)
         return False
 
     def _safe_to_rollover(self, backup_key_timestamp, hpkp_days):
@@ -1742,10 +1753,15 @@ class AcmeManager(object):
                 self._warn('Unable to load backup private key ', error, '\n')
                 continue
 
+            key_days_remaining = self._days_until_rollover(oldest_key_timestamp, expiration_days)
+            if (0 < key_days_remaining):
+                self._detail('Private key due for rollover in ', key_days_remaining,
+                             ' day' if (1 == key_days_remaining) else ' days', '\n')
+
             rollover = False
             if (self.args.rollover
-                or (self._option(private_keys[private_key_name], 'auto_rollover')
-                    and self._time_to_rollover(oldest_key_timestamp, expiration_days))):
+                    or (self._option(private_keys[private_key_name], 'auto_rollover')
+                        and self._time_to_rollover(oldest_key_timestamp, expiration_days))):
                 if (self.args.force_rollover or self._safe_to_rollover(youngest_key_timestamp, hpkp_days)):
                     rollover = True
                 else:
@@ -1832,21 +1848,25 @@ class AcmeManager(object):
                                         self._info(key_type.upper(), ' certificate ', certificate_name, ' public key does not match private key\n')
                                         changed_private_key = True
                                     else:
-                                        valid_duration = self._datetime_from_asn1_generaltime(existing_certificate.get_notAfter()) - datetime.datetime.utcnow()
-                                        if (valid_duration.days < 0):
-                                            self._info(key_type.upper(), ' certificate ', certificate_name, ' has expired\n')
-                                        elif (valid_duration.days < self._setting('renewal_days')):
-                                            self._info(key_type.upper(), ' certificate ', certificate_name, ' will expire in ',
-                                                       (str(valid_duration.days) + ' days') if (valid_duration.days) else 'less than a day',
-                                                       '\n')
+                                        cert_has_must_staple = self.has_oscp_must_staple(existing_certificate)
+                                        if (cert_has_must_staple != self._option(key_certificates[certificate_name], 'ocsp_must_staple')):
+                                            self._info(key_type.upper(), ' certificate ', certificate_name,
+                                                       ' has' if (cert_has_must_staple) else ' does not have',
+                                                       ' ocsp_must_staple option\n')
                                         else:
-                                            cert_has_must_staple = self.has_oscp_must_staple(existing_certificate)
-                                            if (cert_has_must_staple != self._option(key_certificates[certificate_name], 'ocsp_must_staple')):
-                                                self._info(key_type.upper(), ' certificate ', certificate_name,
-                                                           ' has' if (cert_has_must_staple) else ' does not have',
-                                                           ' ocsp_must_staple option\n')
+                                            valid_duration = (self._datetime_from_asn1_generaltime(existing_certificate.get_notAfter())
+                                                              - datetime.datetime.utcnow())
+                                            if (valid_duration.days < 0):
+                                                self._info(key_type.upper(), ' certificate ', certificate_name, ' has expired\n')
+                                            elif (valid_duration.days < self._setting('renewal_days')):
+                                                self._info(key_type.upper(), ' certificate ', certificate_name, ' will expire in ',
+                                                           (str(valid_duration.days) + ' days') if (valid_duration.days) else 'less than a day',
+                                                           '\n')
                                             else:
-                                                self._debug(key_type.upper(), ' certificate valid beyond renewal window\n')
+                                                self._debug(key_type.upper(), ' certificate ', certificate_name, ' valid beyond renewal window\n')
+                                                days_to_renew = valid_duration.days - self._setting('renewal_days')
+                                                self._detail(key_type.upper(), ' certificate due for renewal in ',
+                                                             days_to_renew, ' day' if (1 == days_to_renew) else ' days', '\n')
                                                 continue
                     issue_certificate_key_types.append(key_type)
 
@@ -2419,13 +2439,22 @@ class AcmeManager(object):
                         return
                     sock.settimeout(None)
 
+                def _process_ocsp(conn, ocsp_data, data):
+                    conn.get_app_data()['has_ocsp'] = (b'' != ocsp_data)
+                    return True
+
+                app_data = {'has_ocsp': False}
+                ssl_context.set_ocsp_client_callback(_process_ocsp)
                 ssl_sock = OpenSSL.SSL.Connection(ssl_context, sock)
+                ssl_sock.set_app_data(app_data)
                 ssl_sock.set_connect_state()
                 ssl_sock.set_tlsext_host_name(host_name.encode('ascii'))
                 ssl_sock.request_ocsp()
                 ssl_sock.do_handshake()
                 self._debug('Connected to ', ssl_sock.get_servername(), ', protocol ', ssl_sock.get_protocol_version_name(),
-                            ', cipher ', ssl_sock.get_cipher_name(), '\n')
+                            ', cipher ', ssl_sock.get_cipher_name(),
+                            ', OCSP Staple ', 'present' if (app_data['has_ocsp']) else 'missing',
+                            '\n')
                 installed_certificates = ssl_sock.get_peer_cert_chain()
                 ssl_sock.shutdown()
                 ssl_sock.close()

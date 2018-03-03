@@ -5,6 +5,7 @@
     "settings": {
         "follower_mode": false,
         "log_level": "debug",
+        "color_output": true,
         "key_size": 4096,
         "key_curve": "secp384r1",
         "key_cipher": "blowfish",

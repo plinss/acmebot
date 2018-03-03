@@ -494,6 +494,10 @@ All of these need only be present when the desired value is different from the d
 * ``log_level`` specifies the amount of information written into the log file.
   Possible values are ``null``, ``"normal"``, ``"verbose"``, ``"debug"``, and ``"detail"``.
   ``"verbose"``, ``"debug"``, and ``"detail"`` settings correlate to the ``--verbose``, ``--debug`` and ``--detail`` command-line options.
+* ``color_output`` specifies if the output should be colorized.
+  Colorized output will be suppressed on non-tty devices.
+  This option may be overridden via command line options.
+  The default value is ``true``.
 * ``key_size`` specifies the size (in bits) for RSA private keys.
   The default value is ``4096``.
   RSA certificates can be turned off by setting this value to ``0`` or ``null``.
@@ -1510,7 +1514,8 @@ Normal output may be supressed by using the ``--quiet`` option.
 
 Error and warning output will be sent to stderr and cannot be supressed.
 
-The output can be colorized by type by adding the ``--color`` option.
+The output can be colorized by type by adding the ``--color`` option,
+or colorized output can be suppressed via the ``--no-color`` option.
 
 
 Private Key Rollover
