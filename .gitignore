@@ -1,0 +1,8 @@
+etc/*
+var/*
+acme*.json
+
+*.pem
+*.zip
+*.orig
+*.sublime-*

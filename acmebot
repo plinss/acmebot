@@ -2440,7 +2440,7 @@ class AcmeManager(object):
                     sock.settimeout(None)
 
                 def _process_ocsp(conn, ocsp_data, data):
-                    conn.get_app_data()['has_ocsp'] = (b'' != ocsp_data)
+                    conn.get_app_data()['ocsp'] = asn1_ocsp.OCSPResponse.load(ocsp_data) if (b'' != ocsp_data) else None
                     return True
 
                 app_data = {'has_ocsp': False}
@@ -2453,7 +2453,7 @@ class AcmeManager(object):
                 ssl_sock.do_handshake()
                 self._debug('Connected to ', ssl_sock.get_servername(), ', protocol ', ssl_sock.get_protocol_version_name(),
                             ', cipher ', ssl_sock.get_cipher_name(),
-                            ', OCSP Staple ', 'present' if (app_data['has_ocsp']) else 'missing',
+                            ', OCSP Staple ', self.ocsp_response_status(app_data['ocsp']).upper() if (app_data['ocsp']) else 'missing',
                             '\n')
                 installed_certificates = ssl_sock.get_peer_cert_chain()
                 ssl_sock.shutdown()
@@ -2463,7 +2463,8 @@ class AcmeManager(object):
                 if (self._certificates_match(certificate.wrapped, installed_certificate)):
                     self._info(key_type.upper(), ' certificate ', certificate_name, ' present for ', host_desc, '\n')
                 else:
-                    self._warn('ERROR: ', key_type.upper(), ' certificate mismatch for ', host_desc, '\n')
+                    self._warn('ERROR: ', key_type.upper(), ' certificate "',
+                               installed_certificate.get_subject().commonName, '" mismatch for ', host_desc, '\n')
                 if (len(chain) != len(installed_chain)):
                     self._warn('ERROR: ', key_type.upper(), ' certificate chain length mismatch for ', host_desc, ', got ', len(installed_chain),
                                ' intermediate(s), expected ', len(chain), '\n')
@@ -2473,7 +2474,7 @@ class AcmeManager(object):
                             self._info('Intermediate ', key_type.upper(), ' certificate "', intermediate.wrapped.get_subject().commonName,
                                        '" present for ', host_desc, '\n')
                         else:
-                            self._warn('ERROR: Intermediate ', key_type.upper(), ' certificate "', intermediate.wrapped.get_subject().commonName,
+                            self._warn('ERROR: Intermediate ', key_type.upper(), ' certificate "', installed_intermediate.get_subject().commonName,
                                        '" mismatch for ', host_desc, '\n')
             except Exception as error:
                 self._warn('ERROR: Unable to connect to ', host_desc, ' via ', key_type.upper(), '\n', error, '\n')
