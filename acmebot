@@ -2569,19 +2569,29 @@ class AcmeManager(object):
         self._validate_config()
         self._log('\n', self.script_name, ' executed at ', str(datetime.datetime.now()), '\n')
         pid_file_path = os.path.join(self._directory('pid'), self.script_name + '.pid')
-        if (self._process_running(pid_file_path)):
-            self._error('Client already running\n')
+        if (self.args.random_wait):
+            delay_seconds = min(random.randrange(min(self._setting('min_run_delay'), self._setting('max_run_delay')),
+                                                 max(self._setting('min_run_delay'), self._setting('max_run_delay'))), 86400)
+
+            def _plural(duration, unit):
+                if (0 < duration):
+                    return ('{duration} {unit}{plural} '.format(duration=duration, unit=unit, plural='' if (1 == duration) else 's'))
+                return ''
+
+            self._detail('Waiting for ',
+                         _plural(int(delay_seconds / 3600), 'hour'), _plural(int((delay_seconds % 3600) / 60), 'minute'),
+                         _plural((delay_seconds % 60), 'second'), '\n')
+            time.sleep(delay_seconds)
+            if (self._process_running(pid_file_path)):
+                self._detail('Waiting for other running client instance\n')
+                while (self._process_running(pid_file_path)):
+                    time.sleep(random.randrange(5, 30))
+        else:
+            if (self._process_running(pid_file_path)):
+                self._error('Client already running\n')
         with self._open_file(pid_file_path, 'w') as pid_file:
             pid_file.write(str(os.getpid()))
         try:
-            if (self.args.random_wait):
-                delay_seconds = min(random.randrange(min(self._setting('min_run_delay'), self._setting('max_run_delay')),
-                                                     max(self._setting('min_run_delay'), self._setting('max_run_delay'))), 86400)
-                self._detail('Waiting for ',
-                             (str(int(delay_seconds / 3600)) + ' hours ') if (delay_seconds > 3600) else '',
-                             (str(int((delay_seconds % 3600) / 60)) + ' minutes ') if (delay_seconds > 60) else '',
-                             str(delay_seconds % 60), ' seconds\n')
-                time.sleep(delay_seconds)
             self.connect_client()
             if (not (self.args.revoke or self.args.auth or self.args.tlsa or self.args.sct or self.args.ocsp or self.args.verify)):
                 self.args.auth = True
