@@ -867,23 +867,31 @@ class AcmeManager(object):
     def archive_private_key(self, file_type, file_name, key_type, archive_name='', archive_date=None):
         self._archive_file(file_type, self._file_path(file_type, file_name, key_type), archive_name=archive_name, archive_date=archive_date)
 
-    def _days_until_rollover(self, backup_key_timestamp, expiration_days):
-        if (backup_key_timestamp and expiration_days):
-            backup_key_modified_time = datetime.datetime.utcfromtimestamp(backup_key_timestamp)
-            return (expiration_days - (datetime.datetime.utcnow() - backup_key_modified_time).days)
+    def _need_to_rollover(self, backup_key_age, expiration_days):
+        if ((backup_key_age is not None) and expiration_days):
+            return (expiration_days <= backup_key_age.days)
         return False
 
-    def _time_to_rollover(self, backup_key_timestamp, expiration_days):
-        days = self._days_until_rollover(backup_key_timestamp, expiration_days)
-        if (days is not False):
-            return (days < 0)
-        return False
-
-    def _safe_to_rollover(self, backup_key_timestamp, hpkp_days):
-        if (backup_key_timestamp and hpkp_days):
-            backup_key_modified_time = datetime.datetime.utcfromtimestamp(backup_key_timestamp)
-            return (hpkp_days < (datetime.datetime.utcnow() - backup_key_modified_time).days)
+    def _safe_to_rollover(self, backup_key_age, hpkp_days):
+        if ((backup_key_age is not None) and hpkp_days):
+            return (hpkp_days < backup_key_age.days)
         return True
+
+    def _private_key_matches_options(self, key_type, private_key, options):
+        if ('rsa' == key_type):
+            return (private_key.bits() == options[0])
+        if ('ecdsa' == key_type):
+            return (private_key.to_cryptography_key().curve.name == options[0])
+        self._warn('Unknown key type ', key_type.upper(), '\n')
+        return False
+
+    def _private_key_descripton(self, key_type, options):
+        if ('rsa' == key_type):
+            return '{key_size} bits'.format(key_size=options[0])
+        if ('ecdsa' == key_type):
+            return 'curve {key_curve}'.format(key_curve=options[0])
+        self._warn('Unknown key type ', key_type.upper(), '\n')
+        return ''
 
     def _public_key_bytes(self, private_key):
         if (private_key):
@@ -1740,32 +1748,44 @@ class AcmeManager(object):
 
             key_cipher_data = self.key_cipher_data(private_key_name)
             backup_keys = {}
-            youngest_key_timestamp = sys.maxsize
-            oldest_key_timestamp = 0
+            youngest_key_timestamp = 0
+            oldest_key_timestamp = sys.maxsize
             try:
                 for key_type in key_options:
                     backup_key_data = self.load_private_key('backup_key', private_key_name, key_type, key_cipher_data)
                     if (backup_key_data.timestamp):
-                        youngest_key_timestamp = min(youngest_key_timestamp, backup_key_data.timestamp)
-                        oldest_key_timestamp = max(oldest_key_timestamp, backup_key_data.timestamp)
+                        youngest_key_timestamp = max(youngest_key_timestamp, backup_key_data.timestamp)
+                        oldest_key_timestamp = min(oldest_key_timestamp, backup_key_data.timestamp)
                     backup_keys[key_type] = backup_key_data
             except PrivateKeyError as error:
                 self._warn('Unable to load backup private key ', error, '\n')
                 continue
 
-            key_days_remaining = self._days_until_rollover(oldest_key_timestamp, expiration_days)
-            if (0 < key_days_remaining):
-                self._detail('Private key due for rollover in ', key_days_remaining,
-                             ' day' if (1 == key_days_remaining) else ' days', '\n')
+            if (0 < youngest_key_timestamp):
+                now = datetime.datetime.utcnow()
+                youngest_key_age = (now - datetime.datetime.utcfromtimestamp(youngest_key_timestamp))
+                oldest_key_age = (now - datetime.datetime.utcfromtimestamp(oldest_key_timestamp))
+            else:
+                youngest_key_age = None
+                oldest_key_age = None
+
+            def _duration(prefix, days):
+                if (0 < days):
+                    return (prefix + ('1 day' if (1 == days) else (str(days) + ' days')))
+                return ('' if (0 == days) else (_duration(' ', -days) + ' ago'))
+
+            if (oldest_key_age is not None):
+                self._detail('Private key due for rollover', _duration(' in ', expiration_days - oldest_key_age.days), '\n')
 
             rollover = False
             if (self.args.rollover
                     or (self._option(private_keys[private_key_name], 'auto_rollover')
-                        and self._time_to_rollover(oldest_key_timestamp, expiration_days))):
-                if (self.args.force_rollover or self._safe_to_rollover(youngest_key_timestamp, hpkp_days)):
+                        and self._need_to_rollover(oldest_key_age, expiration_days))):
+                if (self.args.force_rollover or self._safe_to_rollover(youngest_key_age, hpkp_days)):
                     rollover = True
                 else:
-                    self._warn('Backup private key for ', private_key_name, ' is younger than HPKP duration, rollover skipped\n',
+                    self._warn('A backup private key for ', private_key_name, ' is younger than HPKP duration',
+                               _duration(' by ', hpkp_days - youngest_key_age.days), ', rollover skipped\n',
                                'Use "--force" to force key rollover, note that this can brick a web site if HPKP is deployed\n')
 
             if (rollover):
@@ -1777,6 +1797,16 @@ class AcmeManager(object):
                     self._warn('Unable to load private key ', error, '\n')
                     continue
 
+            for key_type, options in key_options.items():
+                if (keys[key_type].key and not self._private_key_matches_options(key_type, keys[key_type].key, options)):
+                    self._info('Private ', key_type.upper(), ' key is not ', self._private_key_descripton(key_type, options), '\n')
+                    if (self.args.force_rollover or self._safe_to_rollover(youngest_key_age, hpkp_days)):
+                        keys[key_type] = KeyData(None, None)
+                    else:
+                        self._warn('A backup private key for ', private_key_name, ' is younger than HPKP duration',
+                                   _duration(' by ', hpkp_days - youngest_key_age.days), ', rollover skipped\n',
+                                   'Use "--force" to force key rollover, note that this can brick a web site if HPKP is deployed\n')
+
             for key_type in key_options:
                 if (backup_keys[key_type].key and not keys[key_type].key):
                     keys[key_type] = backup_keys[key_type]
@@ -1787,11 +1817,11 @@ class AcmeManager(object):
                                    backup_key_file=self._file_path('backup_key', private_key_name, key_type),
                                    passphrase=key_cipher_data.passphrase if (key_cipher_data) else None)
             if (rolled_private_key):
-                self._status('Private key rolled over for ', private_key_name, '\n')
+                self._status('Private key rolling over for ', private_key_name, '\n')
 
             if (not rolled_private_key
-                    and self._time_to_rollover(oldest_key_timestamp, expiration_days)
-                    and self._safe_to_rollover(youngest_key_timestamp, hpkp_days)):
+                    and self._need_to_rollover(oldest_key_age, expiration_days)
+                    and self._safe_to_rollover(youngest_key_age, hpkp_days)):
                 self._status('Backup key for ', private_key_name, ' has expired. Use "--rollover" to replace.\n')
 
             for key_type, options in key_options.items():
@@ -1908,6 +1938,11 @@ class AcmeManager(object):
 
         for private_key_data in processed_keys:
             private_key_name = private_key_data.name
+
+            if (not private_key_data.issued_certificates):
+                self._warn('No certificates issued for private key ', private_key_name, '\n')
+                self._clear_hooks()
+                continue
 
             generated_backup_key = False
             backup_keys = private_key_data.backup_keys

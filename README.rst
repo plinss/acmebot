@@ -59,7 +59,7 @@ Automatic Management of Backup Private Keys
 
 Using HPKP requires a second public key to provide a backup when private keys are changed.
 This tool automatically generates backup keys and switches to the pre-generated backup key when rolling over private keys.
-Rolling over private keys can be done automatically and is scheculed independently of certificate expiration.
+Rolling over private keys can be done automatically and is scheduled independently of certificate expiration.
 Private key rollover is prevented in cases where insufficient time has passed to distribute backup HPKP pins.
 
 
