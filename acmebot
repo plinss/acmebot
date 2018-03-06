@@ -216,6 +216,7 @@ class AcmeManager(object):
         self.updated_services = set()
         self.hooks = collections.OrderedDict()
 
+        self.config = {'settings': {'color_output': True}}
         self.config, self.config_file_path = self._load_config(self.args.config_path, ('.', os.path.join('/etc', self.script_name), self.script_dir))
         self._key_types = ('rsa', 'ecdsa')
         self._config_defaults = {
@@ -1940,7 +1941,10 @@ class AcmeManager(object):
             private_key_name = private_key_data.name
 
             if (not private_key_data.issued_certificates):
-                self._warn('No certificates issued for private key ', private_key_name, '\n')
+                if (private_key_data.generated_key or private_key_data.rolled_key):
+                    self._warn('No certificates issued for private key ', private_key_name, ' skipping key updates\n')
+                else:
+                    self._info('No certificates issued for private key ', private_key_name, '\n')
                 self._clear_hooks()
                 continue
 
@@ -1988,7 +1992,7 @@ class AcmeManager(object):
                 if ((1 < len(keys))
                         and (private_key_data.generated_key or private_key_data.changed_key or generated_backup_key
                              or not self.hpkp_headers_present(private_key_name, keys, hpkp_days, pin_subdomains, hpkp_report_uri))):
-                    self._info('Generating HPKP headers for ', private_key_name, '\n')
+                    self._status('Generating HPKP headers for ', private_key_name, '\n')
                     transactions += self.save_hpkp_headers(private_key_name, keys, hpkp_days, pin_subdomains, hpkp_report_uri)
                     generated_hpkp_headers = True
 
