@@ -2339,7 +2339,7 @@ class AcmeManager(object):
                     asn1crypto_certificate = asn1_x509.Certificate.load(self._certificate_bytes(certificate))
 
                     ocsp_response = self.load_oscp_response(certificate_name, key_type)
-                    if (ocsp_response and ('good' == self.ocsp_response_status(ocsp_response))
+                    if (ocsp_response and ('good' == self.ocsp_response_status(ocsp_response).lower())
                             and (self.ocsp_response_serial_number(ocsp_response) == asn1crypto_certificate.serial_number)):
                         last_update = self.ocsp_response_this_update(ocsp_response)
                         self._detail('Have stapled OCSP response for ', key_type.upper(), ' certificate ', certificate_name,
@@ -2380,10 +2380,10 @@ class AcmeManager(object):
                                 if ('successful' == ocsp_response['response_status'].native):
                                     ocsp_status = self.ocsp_response_status(ocsp_response)
                                     this_update = self.ocsp_response_this_update(ocsp_response)
-                                    self._detail('Retrieved OCSP status "', ocsp_status, '" for ', key_type.upper(), ' certificate ', certificate_name,
+                                    self._detail('Retrieved OCSP status "', ocsp_status.upper(), '" for ', key_type.upper(), ' certificate ', certificate_name,
                                                  ' from ', ocsp_url,
                                                  ' updated at ', this_update.strftime('%Y-%m-%d %H:%M:%S UTC'), '\n')
-                                    if ('good' == ocsp_status):
+                                    if ('good' == ocsp_status.lower()):
                                         if (this_update == last_update):
                                             self._debug('OCSP response for ', key_type.upper(), ' certificate ', certificate_name,
                                                         ' from ', ocsp_url,
@@ -2398,7 +2398,7 @@ class AcmeManager(object):
                                         self.update_services(self._get_list(key_certificates[certificate_name], 'services'))
                                         break
                                     else:
-                                        self._warn(key_type.upper(), ' certificate ', certificate_name, ' has OCSP status "', ocsp_status, '"',
+                                        self._warn(key_type.upper(), ' certificate ', certificate_name, ' has OCSP status "', ocsp_status.upper(), '"',
                                                    ' from ', ocsp_url,
                                                    ' updated at ', this_update.strftime('%Y-%m-%d %H:%M:%S UTC'), '\n')
                                 else:
@@ -2529,8 +2529,15 @@ class AcmeManager(object):
                         else:
                             self._warn('ERROR: Intermediate ', key_type.upper(), ' certificate "', installed_intermediate.get_subject().commonName,
                                        '" mismatch for ', host_desc, '\n')
-                if (self.has_oscp_must_staple(certificate) and (not ocsp_staple)):
-                    self._warn('ERROR: Certificate has OCSP Must-Staple but no OSCP staple found\n')
+                if (ocsp_staple):
+                    ocsp_status = self.ocsp_response_status(ocsp_staple)
+                    if ('good' == ocsp_status.lower()):
+                        self._info('OCSP staple status is GOOD\n')
+                    else:
+                        self._warn('ERROR: OCSP staple has status: ', ocsp_status.upper(), '\n')
+                else:
+                    if (self.has_oscp_must_staple(certificate)):
+                        self._warn('ERROR: Certificate has OCSP Must-Staple but no OSCP staple found\n')
 
             except Exception as error:
                 self._warn('ERROR: Unable to connect to ', host_desc, ' via ', key_type.upper(), '\n', error, '\n')
