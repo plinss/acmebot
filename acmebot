@@ -329,6 +329,10 @@ class AcmeManager(object):
                     'url': 'http://ct.googleapis.com/testtube',
                     'id': 'sMyD5aX5fWuvfAnMKEkEhyrH6IsTLGNQt8b9JuFsbHc='
                 },
+                'google_argon2018': {
+                    'url': 'https://ct.googleapis.com/logs/argon2018',
+                    'id': 'pFASaQVaFVReYhGrN7wQP2KuVXakXksXFEU+GyIQaiU='
+                },
                 'digicert': {
                     'url': 'https://ct1.digicert-ct.com/log',
                     'id': 'VhQGmi/XwuzT9eG9RLI+x0Z2ubyZEVzA75SYVdaJ0N0='
@@ -341,21 +345,13 @@ class AcmeManager(object):
                     'url': 'https://vega.ws.symantec.com',
                     'id': 'vHjh38X2PGhGSTNNoQ+hXwl5aSAJwIG08/aRfz7ZuKU='
                 },
-                'venafi': {
-                    'url': 'https://ctlog.api.venafi.com',
-                    'id': 'rDua7X+pZ0dXFZ5tfVdWcvnZgQCUHpve/+yhMTt1eC0='
-                },
-                'wosign': {
-                    'url': 'https://ctlog.wosign.com',
-                    'id': 'QbLcLonmPOSvG6e7Kb9oxt7m+fHMBH4w3/rjs7olkmM='
-                },
                 'cnnic': {
                     'url': 'https://ctserver.cnnic.cn',
                     'id': 'pXesnO11SN2PAltnokEInfhuD0duwgPC7L7bGF8oJjg='
                 },
-                'startssl': {
-                    'url': 'https://ct.startssl.com',
-                    'id': 'NLtq1sPfnAPuqKSZ/3iRSGydXlysktAfe/0bzhnbSO8='
+                'cloudflare_nimbus2018': {
+                    'url': 'https://ct.cloudflare.com/logs/nimbus2018',
+                    'id': '23Sv7ssp7LH+yj5xbSzluaq7NveEcYPHXZ1PN7Yfv2Q='
                 }
             }
         }
