@@ -245,6 +245,8 @@ class AcmeManager(object):
                 'dns_lookup_delay': 10,
                 'max_authorization_attempts': 30,
                 'authorization_delay': 10,
+                'max_ocsp_verify_attempts': 5,
+                'ocsp_verify_retry_delay': 2,
                 'min_run_delay': 300,
                 'max_run_delay': 3600,
                 'acme_directory_url': 'https://acme-v01.api.letsencrypt.org/directory',
@@ -2420,6 +2422,72 @@ class AcmeManager(object):
                 self._warn('Unable to save OCSP responses for ', private_key_name, '\n', error, '\n')
                 self._clear_hooks()
 
+    def _send_starttls(self, type, sock, host_name):
+        sock.settimeout(30)
+        type = type.lower()
+        if ('smtp' == type):
+            self._detail('SMTP: ', sock.recv(4096))
+            sock.send(b'ehlo acmebot.linss.com\r\n')
+            buffer = sock.recv(4096)
+            self._detail('SMTP: ', buffer)
+            if (b'STARTTLS' not in buffer):
+                sock.shutdown()
+                sock.close()
+                raise Exception('STARTTLS not supported on server')
+            sock.send(b'starttls\r\n')
+            self._detail('SMTP: ', sock.recv(4096))
+        elif ('pop3' == type):
+            self._detail('POP3: ', sock.recv(4096))
+            sock.send(b'STLS\r\n')
+            self._detail('POP3: ', sock.recv(4096))
+        elif ('imap' == type):
+            self._detail('IMAP: ', sock.recv(4096))
+            sock.send(b'a001 STARTTLS\r\n')
+            self._detail('IMAP: ', sock.recv(4096))
+        elif ('ftp' == type):
+            self._detail('FTP: ', sock.recv(4096))
+            sock.send(b'AUTH TLS\r\n')
+            self._detail('FTP: ', sock.recv(4096))
+        elif ('xmpp' == type):
+            sock.send('<stream:stream xmlns:stream="http://etherx.jabber.org/streams" '
+                      'xmlns="jabber:client" to="{host}" version="1.0">\n'.format(host=host_name).encode('ascii'))
+            self._detail('XMPP: ', sock.recv(4096))
+            sock.send(b'<starttls xmlns="urn:ietf:params:xml:ns:xmpp-tls"/>')
+            self._detail('XMPP: ', sock.recv(4096))
+        else:
+            sock.shutdown()
+            sock.close()
+            raise Exception('Unsuppoprted STARTTLS type: ' + type)
+        sock.settimeout(None)
+
+    def _fetch_tls_info(self, addr, ssl_context, key_type, host_name, starttls):
+        sock = socket.socket(addr[0], socket.SOCK_STREAM)
+        sock.connect(addr[4])
+
+        if (starttls):
+            self._send_starttls(starttls, sock, host_name)
+
+        def _process_ocsp(conn, ocsp_data, data):
+            conn.get_app_data()['ocsp'] = asn1_ocsp.OCSPResponse.load(ocsp_data) if (b'' != ocsp_data) else None
+            return True
+
+        app_data = {'has_ocsp': False}
+        ssl_context.set_ocsp_client_callback(_process_ocsp)
+        ssl_sock = OpenSSL.SSL.Connection(ssl_context, sock)
+        ssl_sock.set_app_data(app_data)
+        ssl_sock.set_connect_state()
+        ssl_sock.set_tlsext_host_name(host_name.encode('ascii'))
+        ssl_sock.request_ocsp()
+        ssl_sock.do_handshake()
+        self._debug('Connected to ', ssl_sock.get_servername(), ', protocol ', ssl_sock.get_protocol_version_name(),
+                    ', cipher ', ssl_sock.get_cipher_name(),
+                    ', OCSP Staple ', self.ocsp_response_status(app_data['ocsp']).upper() if (app_data['ocsp']) else 'missing',
+                    '\n')
+        installed_certificates = ssl_sock.get_peer_cert_chain()
+        ssl_sock.shutdown()
+        ssl_sock.close()
+        return installed_certificates, app_data['ocsp']
+
     def _verify_certificate_installation(self, certificate_name, certificate, chain, key_type, host_name, port_number, starttls, cipher_list):
         ssl_context = OpenSSL.SSL.Context(OpenSSL.SSL.SSLv23_METHOD)
         ssl_context.set_cipher_list(cipher_list)
@@ -2434,65 +2502,15 @@ class AcmeManager(object):
             host_desc = host_name + ' at ' + (('[' + addr[4][0] + ']') if (socket.AF_INET6 == addr[0]) else addr[4][0]) + ':' + str(port_number)
             try:
                 self._debug('Connecting to ', host_desc, ' with ', key_type.upper(), ' ciphers\n')
-                sock = socket.socket(addr[0], socket.SOCK_STREAM)
-                sock.connect(addr[4])
+                installed_certificates, ocsp_staple = self._fetch_tls_info(addr, ssl_context, key_type, host_name, starttls)
+                if (self.has_oscp_must_staple(certificate)):
+                    attempts = 1
+                    while ((not ocsp_staple) and (attempts < self._setting('max_ocsp_verify_attempts'))):
+                        time.sleep(self._setting('ocsp_verify_retry_delay'))
+                        self._detail('Retrying to fetch OCSP staple\n')
+                        installed_certificates, ocsp_staple = self._fetch_tls_info(addr, ssl_context, key_type, host_name, starttls)
+                        attempts += 1
 
-                if (starttls):
-                    sock.settimeout(30)
-                    if ('smtp' == starttls.lower()):
-                        self._detail('SMTP: ', sock.recv(4096))
-                        sock.send(b'ehlo acmebot.linss.com\r\n')
-                        buffer = sock.recv(4096)
-                        self._detail('SMTP: ', buffer)
-                        if (b'STARTTLS' not in buffer):
-                            self._warn('STARTTLS not supported on ', host_desc, '\n')
-                            sock.shutdown()
-                            sock.close()
-                            continue
-                        sock.send(b'starttls\r\n')
-                        self._detail('SMTP: ', sock.recv(4096))
-                    elif ('pop3' == starttls.lower()):
-                        self._detail('POP3: ', sock.recv(4096))
-                        sock.send(b'STLS\r\n')
-                        self._detail('POP3: ', sock.recv(4096))
-                    elif ('imap' == starttls.lower()):
-                        self._detail('IMAP: ', sock.recv(4096))
-                        sock.send(b'a001 STARTTLS\r\n')
-                        self._detail('IMAP: ', sock.recv(4096))
-                    elif ('ftp' == starttls.lower()):
-                        self._detail('FTP: ', sock.recv(4096))
-                        sock.send(b'AUTH TLS\r\n')
-                        self._detail('FTP: ', sock.recv(4096))
-                    elif ('xmpp' == starttls.lower()):
-                        sock.send('<stream:stream xmlns:stream="http://etherx.jabber.org/streams" '
-                                  'xmlns="jabber:client" to="{host}" version="1.0">\n'.format(host=host_name).encode('ascii'))
-                        self._detail('XMPP: ', sock.recv(4096))
-                        sock.send(b'<starttls xmlns="urn:ietf:params:xml:ns:xmpp-tls"/>')
-                        self._detail('XMPP: ', sock.recv(4096))
-                    else:
-                        self._warn('Unsuppoprted STARTTLS type: ', starttls, '\n')
-                        return
-                    sock.settimeout(None)
-
-                def _process_ocsp(conn, ocsp_data, data):
-                    conn.get_app_data()['ocsp'] = asn1_ocsp.OCSPResponse.load(ocsp_data) if (b'' != ocsp_data) else None
-                    return True
-
-                app_data = {'has_ocsp': False}
-                ssl_context.set_ocsp_client_callback(_process_ocsp)
-                ssl_sock = OpenSSL.SSL.Connection(ssl_context, sock)
-                ssl_sock.set_app_data(app_data)
-                ssl_sock.set_connect_state()
-                ssl_sock.set_tlsext_host_name(host_name.encode('ascii'))
-                ssl_sock.request_ocsp()
-                ssl_sock.do_handshake()
-                self._debug('Connected to ', ssl_sock.get_servername(), ', protocol ', ssl_sock.get_protocol_version_name(),
-                            ', cipher ', ssl_sock.get_cipher_name(),
-                            ', OCSP Staple ', self.ocsp_response_status(app_data['ocsp']).upper() if (app_data['ocsp']) else 'missing',
-                            '\n')
-                installed_certificates = ssl_sock.get_peer_cert_chain()
-                ssl_sock.shutdown()
-                ssl_sock.close()
                 installed_certificate = installed_certificates[0]
                 installed_chain = installed_certificates[1:]
                 if (self._certificates_match(certificate.wrapped, installed_certificate)):
@@ -2511,6 +2529,9 @@ class AcmeManager(object):
                         else:
                             self._warn('ERROR: Intermediate ', key_type.upper(), ' certificate "', installed_intermediate.get_subject().commonName,
                                        '" mismatch for ', host_desc, '\n')
+                if (self.has_oscp_must_staple(certificate) and (not ocsp_staple)):
+                    self._warn('ERROR: Certificate has OCSP Must-Staple but no OSCP staple found\n')
+
             except Exception as error:
                 self._warn('ERROR: Unable to connect to ', host_desc, ' via ', key_type.upper(), '\n', error, '\n')
 

@@ -563,6 +563,11 @@ All of these need only be present when the desired value is different from the d
   The default value is ``30``.
 * ``authorization_delay`` specifies the number of seconds to wait between authorization checks.
   The default value is ``10``.
+* ``max_ocsp_verify_attempts`` specifies the number of times to check for OCSP staples during verification.
+  Retries will only happen when the certificate has the OCSP Must-Staple extension.
+  The default value is ``5``.
+* ``ocsp_verify_retry_delay`` specifies the number of seconds to wait between OCSP staple verification attempts.
+  The default value is ``2``.
 * ``min_run_delay`` specifies the minimum number of seconds to wait if the ``--randomwait`` command line option is present.
   The default value is ``300``.
 * ``max_run_delay`` specifies the maximum number of seconds to wait if the ``--randomwait`` command line option is present.
