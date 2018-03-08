@@ -1519,7 +1519,7 @@ class AcmeManager(object):
         except Exception:
             self._error('Unable to save registration to ', registration_path, '\n')
 
-    def process_authorizations(self, private_key_names=[]):
+    def process_authorizations(self, fetch_only, private_key_names=[]):
         private_keys = self._config('private_keys')
         authorizations = self._config('authorizations')
 
@@ -1536,7 +1536,7 @@ class AcmeManager(object):
                         if (domain_name not in domain_challenges[zone_name]):
                             domain_challenges[zone_name].append(domain_name)
 
-        if (not self._setting('follower_mode')):
+        if (not fetch_only):
             for zone_name in authorizations:
                 if (zone_name not in domain_challenges):
                     domain_challenges[zone_name] = []
@@ -1555,7 +1555,7 @@ class AcmeManager(object):
                         self.authorizations[domain_name] = authorization_resource
                         self._debug(domain_name, ' already authorized\n')
                     elif (messages.STATUS_PENDING == authorization_resource.body.status):
-                        if (not self._setting('follower_mode')):
+                        if (not fetch_only):
                             authorization_resources[domain_name] = authorization_resource
                         else:
                             self._debug(domain_name, ' not authorized\n')
@@ -2690,7 +2690,7 @@ class AcmeManager(object):
             pid_file.write(str(os.getpid()))
         try:
             self.connect_client()
-            if (not (self.args.revoke or self.args.auth or self.args.tlsa or self.args.sct or self.args.ocsp or self.args.verify)):
+            if (not (self.args.revoke or self.args.auth or self.args.certs or self.args.tlsa or self.args.sct or self.args.ocsp or self.args.verify)):
                 self.args.auth = True
                 self.args.certs = True
                 self.args.tlsa = True
@@ -2703,8 +2703,8 @@ class AcmeManager(object):
                     self._error('Revocation must explicitly specify private key names\n')
                 else:
                     self.revoke_certificates(self.args.private_key_names)
-            if (self.args.auth):
-                self.process_authorizations(self.args.private_key_names)
+            if (self.args.auth or self.args.certs):
+                self.process_authorizations(self._setting('follower_mode') or not self.args.auth, self.args.private_key_names)
             if (self.args.certs):
                 self.process_certificates(self.args.private_key_names)
             if (self.args.tlsa):
