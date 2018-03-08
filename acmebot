@@ -2473,6 +2473,8 @@ class AcmeManager(object):
             headers = {}
             lines = http_bytes.decode('utf-8').split('\n')
             for line in lines[1:]:
+                if (not line):
+                    break
                 if (':' in line):
                     key, value = line.split(':', 1)
                     headers[key.lower().strip()] = value.strip()
@@ -2502,16 +2504,6 @@ class AcmeManager(object):
                 return None
         else:
             raise Exception('Unsupported verification protocol: ' + protocol)
-
-    def _pins_match(self, pins, keys):
-        for key in keys:
-            digests = {'sha256': self._public_key_digest(key, 'sha256'), 'sha512': self._public_key_digest(key, 'sha512')}
-            for pin in pins:
-                if (digests[pin[0]] == pin[1]):
-                    break
-            else:
-                return False
-        return True
 
     def _fetch_tls_info(self, addr, ssl_context, key_type, host_name, starttls, protocol):
         sock = socket.socket(addr[0], socket.SOCK_STREAM)
@@ -2597,10 +2589,14 @@ class AcmeManager(object):
 
                 if (protocol_info):
                     if ('public_key_pins' in protocol_info):
-                        if (self._pins_match(protocol_info['public_key_pins'], keys)):
-                            self._info('Public key pins match private keys\n')
-                        else:
-                            self._warn('ERROR: Public key pin not found for all private keys\n')
+                        for key_type, key_name, key_purpose, key in keys:
+                            digests = {'sha256': self._public_key_digest(key, 'sha256'), 'sha512': self._public_key_digest(key, 'sha512')}
+                            for pin in protocol_info['public_key_pins']:
+                                if (digests[pin[0]] == pin[1]):
+                                    self._info('Public key pin found for ', key_type.upper(), ' ', key_purpose, ' key ', key_name, '\n')
+                                    break
+                            else:
+                                self._warn('ERROR: Public key pin missing for ', key_type.upper(), ' ', key_purpose, ' key ', key_name, '\n')
                     else:
                         self._warn('ERROR: Public key pins not found\n')
 
@@ -2629,8 +2625,8 @@ class AcmeManager(object):
             key_cipher_data = self.key_cipher_data(private_key_name)
             try:
                 for key_type in key_options:
-                    keys.append(self.load_private_key('private_key', private_key_name, key_type, key_cipher_data).key)
-                    keys.append(self.load_private_key('backup_key', private_key_name, key_type, key_cipher_data).key)
+                    keys.append((key_type, private_key_name, 'private', self.load_private_key('private_key', private_key_name, key_type, key_cipher_data).key))
+                    keys.append((key_type, private_key_name, 'backup', self.load_private_key('backup_key', private_key_name, key_type, key_cipher_data).key))
             except PrivateKeyError as error:
                 self._warn('Unable to load private key ', error, '\n')
                 continue
