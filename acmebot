@@ -2428,7 +2428,7 @@ class AcmeManager(object):
         type = type.lower()
         if ('smtp' == type):
             self._detail('SMTP: ', sock.recv(4096))
-            sock.send(b'ehlo acmebot.linss.com\r\n')
+            sock.send(b'ehlo acmebot.org\r\n')
             buffer = sock.recv(4096)
             self._detail('SMTP: ', buffer)
             if (b'STARTTLS' not in buffer):
