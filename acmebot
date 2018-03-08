@@ -113,7 +113,7 @@ class AcmeManager(object):
     def __init__(self):
         self.script_dir = os.path.dirname(os.path.realpath(__file__))
         self.script_name = os.path.basename(__file__)
-        self.script_version = '1.10.0'
+        self.script_version = '1.10.1'
 
         self._color_codes = {
             'black': 30,
@@ -1942,11 +1942,8 @@ class AcmeManager(object):
         for private_key_data in processed_keys:
             private_key_name = private_key_data.name
 
-            if (not private_key_data.issued_certificates):
-                if (private_key_data.generated_key or private_key_data.rolled_key):
-                    self._warn('No certificates issued for private key ', private_key_name, ' skipping key updates\n')
-                else:
-                    self._debug('No certificates issued for private key ', private_key_name, '\n')
+            if ((not private_key_data.issued_certificates) and (private_key_data.generated_key or private_key_data.rolled_key)):
+                self._warn('No certificates issued for private key ', private_key_name, ' skipping key updates\n')
                 self._clear_hooks()
                 continue
 
