@@ -1369,7 +1369,7 @@ class AcmeManager(object):
             verify_list = []
             for verify in default_verify:
                 if (isinstance(verify, int)):
-                    verify = {'port': verify, 'starttls': None}
+                    verify = {'port': verify, 'starttls': None, 'protocol': None}
                 elif (isinstance(verify, dict)):
                     if ('port' not in verify):
                         self._error('verify missing port definition')
@@ -1430,7 +1430,7 @@ class AcmeManager(object):
                     verify_list = []
                     for verify in self._get_list(key_certificates[certificate_name], 'verify'):
                         if (isinstance(verify, int)):
-                            verify = {'port': verify, 'starttls': None}
+                            verify = {'port': verify, 'starttls': None, 'protocol': None}
                         elif (isinstance(verify, dict)):
                             if ('port' not in verify):
                                 self._error('verify missing port definition')
@@ -2564,7 +2564,7 @@ class AcmeManager(object):
                     while ((not ocsp_staple) and (attempts < self._setting('max_ocsp_verify_attempts'))):
                         time.sleep(self._setting('ocsp_verify_retry_delay'))
                         self._detail('Retrying to fetch OCSP staple\n')
-                        installed_certificates, ocsp_staple = self._fetch_tls_info(addr, ssl_context, key_type, host_name, starttls)
+                        installed_certificates, ocsp_staple = self._fetch_tls_info(addr, ssl_context, key_type, host_name, starttls, protocol)
                         attempts += 1
 
                 installed_certificate = installed_certificates[0]
