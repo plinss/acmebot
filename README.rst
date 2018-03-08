@@ -132,6 +132,7 @@ Certificate Installation Verification
 -------------------------------------
 
 This tool can automatically connect to configured servers and verify that the generated certificates are properly served via TLS.
+Additional checks are made for OSCP staples and optionally HPKP headers can be verified as well.
 
 
 Installation
@@ -1321,6 +1322,10 @@ When using an object, the avaialable fields are:
 * ``starttls`` specifies the STARTTLS mechanism that should be used to initiate a TLS session.
   Allowed values are: ``null``, ``smtp``, ``pop3``, ``imap``, ``ftp``, and ``xmpp``.
   The default value is ``null``.
+* ``protocol`` specifies the protocol used to obtain additional information to verify.
+  Currently this can retrieve Public-Key-Pins http headers to ensure that they are properly set.
+  Allowed values are: ``null``, and ``http``.
+  The default value is ``null``.
 * ``hosts`` specifies a list of fully qualified domain names to test.
   This allows testing only a subset of the alternative names specified for the certificate.
   Each host name must be present as an alternative name for the certificate.
@@ -1334,13 +1339,17 @@ Example::
     {
         ...
         "verify": [
-            443,
+            {
+                "port": 443,
+                "protocol": "http"
+            },
             {
                 "port": 25,
                 "starttls": "smtp",
                 "hosts": "smtp.example.com",
                 "key_types": "rsa"
-            }
+            },
+            993
         ]
         ...
     }

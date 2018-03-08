@@ -1380,6 +1380,8 @@ class AcmeManager(object):
                             self._error('Invalid port definition ', verify['port'])
                     if ('starttls' not in verify):
                         verify['starttls'] = None
+                    if ('protocol' not in verify):
+                        verify['protocol'] = None
                 verify_list.append(verify)
             self.config['settings']['verify'] = verify_list
 
@@ -1439,6 +1441,8 @@ class AcmeManager(object):
                                     self._error('Invalid port definition ', verify['port'])
                             if ('starttls' not in verify):
                                 verify['starttls'] = None
+                            if ('protocol' not in verify):
+                                verify['protocol'] = None
                             if ('hosts' in verify):
                                 for host_name in self._get_list(verify, 'hosts'):
                                     if (host_name not in alt_names):
@@ -1942,7 +1946,7 @@ class AcmeManager(object):
                 if (private_key_data.generated_key or private_key_data.rolled_key):
                     self._warn('No certificates issued for private key ', private_key_name, ' skipping key updates\n')
                 else:
-                    self._info('No certificates issued for private key ', private_key_name, '\n')
+                    self._debug('No certificates issued for private key ', private_key_name, '\n')
                 self._clear_hooks()
                 continue
 
@@ -2451,16 +2455,65 @@ class AcmeManager(object):
         elif ('xmpp' == type):
             sock.send('<stream:stream xmlns:stream="http://etherx.jabber.org/streams" '
                       'xmlns="jabber:client" to="{host}" version="1.0">\n'.format(host=host_name).encode('ascii'))
-            self._detail('XMPP: ', sock.recv(4096))
+            self._detail('XMPP: ', sock.recv(4096), '\n')
             sock.send(b'<starttls xmlns="urn:ietf:params:xml:ns:xmpp-tls"/>')
-            self._detail('XMPP: ', sock.recv(4096))
+            self._detail('XMPP: ', sock.recv(4096), '\n')
         else:
             sock.shutdown()
             sock.close()
             raise Exception('Unsuppoprted STARTTLS type: ' + type)
         sock.settimeout(None)
 
-    def _fetch_tls_info(self, addr, ssl_context, key_type, host_name, starttls):
+    def _get_http_headers(self, sock, host_name):
+        try:
+            sock.send('HEAD / HTTP/1.0\r\nHost: {host}\r\n\r\n'.format(host=host_name).encode('ascii'))
+            http_bytes = sock.recv(16384)
+            self._detail('HTTP: ', http_bytes)
+
+            headers = {}
+            lines = http_bytes.decode('utf-8').split('\n')
+            for line in lines[1:]:
+                if (':' in line):
+                    key, value = line.split(':', 1)
+                    headers[key.lower().strip()] = value.strip()
+            return headers
+        except Exception as error:
+            self._warn('Unable to fetch http headers from ', host_name, '\n', error, '\n')
+        return None
+
+    def _get_protocol_info(self, protocol, sock, host_name):
+        if ('http' == protocol.lower()):
+            headers = self._get_http_headers(sock, host_name)
+            if (headers is not None):
+                protocol_info = {}
+                if ('public-key-pins' in headers):
+                    pin_header = headers['public-key-pins']
+                    pins = []
+                    for pin in pin_header.split(';'):
+                        pin = pin.strip()
+                        if (pin.startswith('pin-') and ('=' in pin)):
+                            parts = pin.split('=', 1)
+                            pins.append((parts[0][4:], base64.b64decode(parts[1].strip('"\''))))
+                    protocol_info['public_key_pins'] = pins
+                else:
+                    self._debug('HPKP header not present\n')
+                return protocol_info
+            else:
+                return None
+        else:
+            raise Exception('Unsupported verification protocol: ' + protocol)
+
+    def _pins_match(self, pins, keys):
+        for key in keys:
+            digests = {'sha256': self._public_key_digest(key, 'sha256'), 'sha512': self._public_key_digest(key, 'sha512')}
+            for pin in pins:
+                if (digests[pin[0]] == pin[1]):
+                    break
+            else:
+                return False
+        return True
+
+    def _fetch_tls_info(self, addr, ssl_context, key_type, host_name, starttls, protocol):
         sock = socket.socket(addr[0], socket.SOCK_STREAM)
         sock.connect(addr[4])
 
@@ -2484,11 +2537,14 @@ class AcmeManager(object):
                     ', OCSP Staple ', self.ocsp_response_status(app_data['ocsp']).upper() if (app_data['ocsp']) else 'missing',
                     '\n')
         installed_certificates = ssl_sock.get_peer_cert_chain()
+
+        protocol_info = self._get_protocol_info(protocol, ssl_sock, host_name) if (protocol) else None
+
         ssl_sock.shutdown()
         ssl_sock.close()
-        return installed_certificates, app_data['ocsp']
+        return installed_certificates, app_data['ocsp'], protocol_info
 
-    def _verify_certificate_installation(self, certificate_name, certificate, chain, key_type, host_name, port_number, starttls, cipher_list):
+    def _verify_certificate_installation(self, certificate_name, certificate, chain, key_type, host_name, port_number, starttls, cipher_list, protocol, keys):
         ssl_context = OpenSSL.SSL.Context(OpenSSL.SSL.SSLv23_METHOD)
         ssl_context.set_cipher_list(cipher_list)
 
@@ -2502,7 +2558,7 @@ class AcmeManager(object):
             host_desc = host_name + ' at ' + (('[' + addr[4][0] + ']') if (socket.AF_INET6 == addr[0]) else addr[4][0]) + ':' + str(port_number)
             try:
                 self._debug('Connecting to ', host_desc, ' with ', key_type.upper(), ' ciphers\n')
-                installed_certificates, ocsp_staple = self._fetch_tls_info(addr, ssl_context, key_type, host_name, starttls)
+                installed_certificates, ocsp_staple, protocol_info = self._fetch_tls_info(addr, ssl_context, key_type, host_name, starttls, protocol)
                 if (self.has_oscp_must_staple(certificate)):
                     attempts = 1
                     while ((not ocsp_staple) and (attempts < self._setting('max_ocsp_verify_attempts'))):
@@ -2539,6 +2595,15 @@ class AcmeManager(object):
                     if (self.has_oscp_must_staple(certificate)):
                         self._warn('ERROR: Certificate has OCSP Must-Staple but no OSCP staple found\n')
 
+                if (protocol_info):
+                    if ('public_key_pins' in protocol_info):
+                        if (self._pins_match(protocol_info['public_key_pins'], keys)):
+                            self._info('Public key pins match private keys\n')
+                        else:
+                            self._warn('ERROR: Public key pin not found for all private keys\n')
+                    else:
+                        self._warn('ERROR: Public key pins not found\n')
+
             except Exception as error:
                 self._warn('ERROR: Unable to connect to ', host_desc, ' via ', key_type.upper(), '\n', error, '\n')
 
@@ -2558,6 +2623,16 @@ class AcmeManager(object):
             key_options = self._get_key_options(private_keys[private_key_name])
             if (not key_options):
                 self._warn('No configured private key types for ', private_key_name, '\n')
+                continue
+
+            keys = []
+            key_cipher_data = self.key_cipher_data(private_key_name)
+            try:
+                for key_type in key_options:
+                    keys.append(self.load_private_key('private_key', private_key_name, key_type, key_cipher_data).key)
+                    keys.append(self.load_private_key('backup_key', private_key_name, key_type, key_cipher_data).key)
+            except PrivateKeyError as error:
+                self._warn('Unable to load private key ', error, '\n')
                 continue
 
             key_certificates = private_keys[private_key_name].get('certificates', {})
@@ -2583,7 +2658,8 @@ class AcmeManager(object):
                             for host_name in self._get_list(verify, 'hosts', alt_names):
                                 if (host_name in alt_names):
                                     self._verify_certificate_installation(certificate_name, certificate, chain, key_type,
-                                                                          host_name, verify['port'], verify['starttls'], key_type_ciphers[key_type])
+                                                                          host_name, verify['port'], verify['starttls'], key_type_ciphers[key_type],
+                                                                          verify['protocol'], keys)
 
     def _process_running(self, pid_file_path):
         try:
