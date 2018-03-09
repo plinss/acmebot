@@ -2000,7 +2000,10 @@ class AcmeManager(object):
             certificate_params = {}
             for certificate_name in key_certificates:
                 generated_params = False
-                dhparam_pem, ecparam_pem = self.load_params(certificate_name) if (not private_key_data.rolled_key) else (None, None)
+                if (not (private_key_data.rolled_key or private_key_data.changed_key)):
+                    dhparam_pem, ecparam_pem = self.load_params(certificate_name)
+                else:
+                    dhparam_pem, ecparam_pem = (None, None)
                 hold_dhparam_pem = dhparam_pem
                 hold_ecparam_pem = ecparam_pem
 
