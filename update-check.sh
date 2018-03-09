@@ -3,7 +3,7 @@
 ACMEBOT=$(which acmebot)
 
 if [ -L ${ACMEBOT} ]; then
-    ACMEBOT=$(readlink ${ACMEBOT})
+    ACMEBOT=$(readlink -f ${ACMEBOT})
 fi
 
 DIR=${ACMEBOT%/*}
