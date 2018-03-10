@@ -376,6 +376,9 @@ class AcmeManager(object):
             message += str(arg, 'utf-8', 'replace') if isinstance(arg, bytes) else str(arg)
         return message
 
+    def _indent(self, *args):
+        return '\n'.join([('    ' + line) for line in self._message(*args).split('\n')])
+
     def _colorize(self, stream, color, style, message):
         if (stream.isatty() and (self.args.color or self._setting('color_output')) and (not self.args.no_color)):
             stream.write('\033[{style};{color}m{message}\033[0m'.format(color=self._color_codes[color], style=self._style_codes[style], message=message))
@@ -442,10 +445,10 @@ class AcmeManager(object):
                         os.chmod(dir_path, chmod)
                     except PermissionError as error:
                         if (warn):
-                            self._warn('Unable to set directory mode for ', dir_path, '\n', error, '\n')
+                            self._warn('Unable to set directory mode for ', dir_path, '\n', self._indent(error), '\n')
             except Exception as error:
                 if (warn):
-                    self._warn('Unable to create directory ', dir_path, '\n', error, '\n')
+                    self._warn('Unable to create directory ', dir_path, '\n', self._indent(error), '\n')
 
     def _open_file(self, file_path, mode='r', chmod=0o777, warn=True):
         def opener(file_path, flags):
@@ -488,17 +491,17 @@ class AcmeManager(object):
                 try:
                     os.chmod(new_file_path, chmod)
                 except PermissionError as error:
-                    self._warn('Unable to set file mode for ', new_file_path, '\n', error, '\n')
+                    self._warn('Unable to set file mode for ', new_file_path, '\n', self._indent(error), '\n')
             if (timestamp):
                 try:
                     os.utime(new_file_path, (timestamp, timestamp))
                 except PermissionError as error:
-                    self._warn('Unable to set file time for ', new_file_path, '\n', error, '\n')
+                    self._warn('Unable to set file time for ', new_file_path, '\n', self._indent(error), '\n')
             try:
                 os.chown(new_file_path, self._get_user_id(self._setting('file_user')), self._get_group_id(self._setting('file_group')))
             except PermissionError as error:
                 self._warn('Unable to set file ownership for ', new_file_path, ' to ',
-                           self._setting('file_user'), ':', self._setting('file_group'), '\n', error, '\n')
+                           self._setting('file_user'), ':', self._setting('file_group'), '\n', self._indent(error), '\n')
             return new_file_path
         return None
 
@@ -612,14 +615,14 @@ class AcmeManager(object):
             time.sleep(2)
         except subprocess.CalledProcessError as error:
             if (critical):
-                self._error('Failed to reload zone ', zone_name, ', code: ', error.returncode, '\n', error.output, '\n')
+                self._error('Failed to reload zone ', zone_name, ', code: ', error.returncode, '\n', self._indent(error.output), '\n')
             else:
-                self._warn('Failed to reload zone ', zone_name, ', code: ', error.returncode, '\n', error.output, '\n')
+                self._warn('Failed to reload zone ', zone_name, ', code: ', error.returncode, '\n', self._indent(error.output), '\n')
         except Exception as error:
             if (critical):
-                self._error('Failed to reload zone ', zone_name, '\n', error, '\n')
+                self._error('Failed to reload zone ', zone_name, '\n', self._indent(error), '\n')
             else:
-                self._warn('Failed to reload zone ', zone_name, '\n', error, '\n')
+                self._warn('Failed to reload zone ', zone_name, '\n', self._indent(error), '\n')
 
     def _dns_request(self, name, type, name_server=None):
         try:
@@ -674,9 +677,9 @@ class AcmeManager(object):
             self._debug(operation, ' records for ', zone_name, '\n')
             return True
         except subprocess.CalledProcessError as error:
-            self._warn(operation, ' records failed for ', zone_name, ', code: ', error.returncode, '\n', error.output, '\n')
+            self._warn(operation, ' records failed for ', zone_name, ', code: ', error.returncode, '\n', self._indent(error.output), '\n')
         except Exception as error:
-            self._warn(operation, ' records failed for ', zone_name, '\n', error, '\n')
+            self._warn(operation, ' records failed for ', zone_name, '\n', self._indent(error), '\n')
         return False
 
     def _set_dns_challenges(self, zone_name, zone_key, challenges):
@@ -772,7 +775,7 @@ class AcmeManager(object):
                     if (output):
                         self._warn('Service ', service_name, ' responded to reload with:\n', output, '\n')
                 except subprocess.CalledProcessError as error:
-                    self._warn('Service ', service_name, ' reload failed, code: ', error.returncode, '\n', error.output, '\n')
+                    self._warn('Service ', service_name, ' reload failed, code: ', error.returncode, '\n', self._indent(error.output), '\n')
             else:
                 self._warn('Service ', service_name, ' does not have registered reload command\n')
         return reloaded
@@ -1186,7 +1189,8 @@ class AcmeManager(object):
                     return SCTData(sct.get('sct_version'), sct.get('id'), sct.get('timestamp'), sct.get('extensions'), sct.get('signature'))
             except urllib.error.HTTPError as error:
                 if ((400 <= error.code) and (error.code < 500)):
-                    self._warn('Unable to retrieve SCT from log ', ct_log_name, ' HTTP error: ', error.code, ' ', error.reason, '\n', error.read(), '\n')
+                    self._warn('Unable to retrieve SCT from log ', ct_log_name, ' HTTP error: ', error.code, ' ', error.reason, '\n',
+                               self._indent(error.read()), '\n')
                 else:
                     self._warn('Unable to retrieve SCT from log ', ct_log_name, ' HTTP error: ', error.code, ' ', error.reason, '\n')
             except urllib.error.URLError as error:
@@ -1264,7 +1268,8 @@ class AcmeManager(object):
             if (last_update and (304 == error.code)):
                 return False
             if ((400 <= error.code) and (error.code < 500)):
-                self._warn('Unable to retrieve OCSP response from ', ocsp_url, ' HTTP error: ', error.code, ' ', error.reason, '\n', error.read(), '\n')
+                self._warn('Unable to retrieve OCSP response from ', ocsp_url, ' HTTP error: ', error.code, ' ', error.reason, '\n',
+                           self._indent(error.read()), '\n')
             else:
                 self._warn('Unable to retrieve OCSP response from ', ocsp_url, ' HTTP error: ', error.code, ' ', error.reason, '\n')
         except urllib.error.URLError as error:
@@ -1331,9 +1336,9 @@ class AcmeManager(object):
                     self._debug('Calling hook ', hook_name, ': ', hook, '\n')
                     self._status(subprocess.check_output(hook, stderr=subprocess.STDOUT, shell=True))
                 except subprocess.CalledProcessError as error:
-                    self._warn('Hook ', hook_name, ' returned error, code: ', error.returncode, '\n', error.output, '\n')
+                    self._warn('Hook ', hook_name, ' returned error, code: ', error.returncode, '\n', self._indent(error.output), '\n')
                 except Exception as error:
-                    self._warn('Failed to call hook ', hook_name, ': ', hook, '\n', error, '\n')
+                    self._warn('Failed to call hook ', hook_name, ': ', hook, '\n', self._indent(error), '\n')
         self._clear_hooks()
 
     def _clear_hooks(self):
@@ -1584,7 +1589,7 @@ class AcmeManager(object):
                             challenge_http_responses[domain_name] = challenge_file_path
                             self._add_hook('set_http_challenge', domain=domain_name, challenge_file=challenge_http_responses[domain_name])
                         except Exception as error:
-                            self._warn('Unable to create acme-challenge file ', challenge_file_path, '\n', error, '\n')
+                            self._warn('Unable to create acme-challenge file ', challenge_file_path, '\n', self._indent(error), '\n')
                     else:
                         challenge_types[domain_name] = 'dns-01'
                         challenge = self._get_challenge(authorization_resources[domain_name], challenge_types[domain_name])
@@ -1602,7 +1607,7 @@ class AcmeManager(object):
                             json.dump(zone_responses, challenge_file)
                         challenge_dns_responses[zone_name] = zone_responses
                     except Exception as error:
-                        self._warn('Unable to create acme-challenge file for zone ', zone_name, '\n', error, '\n')
+                        self._warn('Unable to create acme-challenge file for zone ', zone_name, '\n', self._indent(error), '\n')
                     if (zone_name in challenge_dns_responses):
                         self._reload_zone(zone_name)
                 self._add_hook('dns_zone_update', zone=zone_name)
@@ -2135,7 +2140,7 @@ class AcmeManager(object):
                         self.update_services(self._get_list(key_certificates[certificate_name], 'services'))
 
             except Exception as error:
-                self._warn('Unable to install keys and certificates for ', private_key_name, '\n', error, '\n')
+                self._warn('Unable to install keys and certificates for ', private_key_name, '\n', self._indent(error), '\n')
                 self._clear_hooks()
 
         for zone_name in updated_key_zones:
@@ -2167,7 +2172,7 @@ class AcmeManager(object):
                                 revoked_certificates.append((certificate_name, key_type))
                                 self._status(key_type.upper(), ' certificate ', certificate_name, ' revoked\n')
                             except Exception as error:
-                                self._warn('Unable to revoke ', key_type.upper(), ' certificate ', certificate_name, '\n', error, '\n')
+                                self._warn('Unable to revoke ', key_type.upper(), ' certificate ', certificate_name, '\n', self._indent(error), '\n')
                         else:
                             self._warn(key_type.upper(), ' certificate ', certificate_name, ' not found\n')
 
@@ -2311,7 +2316,7 @@ class AcmeManager(object):
                 self._commit_file_transactions(transactions, archive_name=None)
                 self._call_hooks()
             except Exception as error:
-                self._warn('Unable to save Signed Certificate Timestamps for ', private_key_name, '\n', error, '\n')
+                self._warn('Unable to save Signed Certificate Timestamps for ', private_key_name, '\n', self._indent(error), '\n')
                 self._clear_hooks()
 
     def update_ocsp_responses(self, private_key_names):
@@ -2423,7 +2428,7 @@ class AcmeManager(object):
                 self._commit_file_transactions(transactions, archive_name=None)
                 self._call_hooks()
             except Exception as error:
-                self._warn('Unable to save OCSP responses for ', private_key_name, '\n', error, '\n')
+                self._warn('Unable to save OCSP responses for ', private_key_name, '\n', self._indent(error), '\n')
                 self._clear_hooks()
 
     def _send_starttls(self, type, sock, host_name):
@@ -2480,7 +2485,7 @@ class AcmeManager(object):
                     headers[key.lower().strip()] = value.strip()
             return headers
         except Exception as error:
-            self._warn('Unable to fetch http headers from ', host_name, '\n', error, '\n')
+            self._warn('Unable to fetch http headers from ', host_name, '\n', self._indent(error), '\n')
         return None
 
     def _get_protocol_info(self, protocol, sock, host_name):
@@ -2497,8 +2502,6 @@ class AcmeManager(object):
                             parts = pin.split('=', 1)
                             pins.append((parts[0][4:], base64.b64decode(parts[1].strip('"\''))))
                     protocol_info['public_key_pins'] = pins
-                else:
-                    self._debug('HPKP header not present\n')
                 return protocol_info
             else:
                 return None
@@ -2543,7 +2546,7 @@ class AcmeManager(object):
         try:
             addr_info = socket.getaddrinfo(host_name, port_number, proto=socket.IPPROTO_TCP)
         except Exception as error:
-            self._warn('ERROR: Unable to get address for ', host_name, '\n', error, '\n')
+            self._warn('ERROR: Unable to get address for ', host_name, '\n', self._indent(error), '\n')
             return
 
         for addr in addr_info:
@@ -2562,30 +2565,30 @@ class AcmeManager(object):
                 installed_certificate = installed_certificates[0]
                 installed_chain = installed_certificates[1:]
                 if (self._certificates_match(certificate.wrapped, installed_certificate)):
-                    self._info(key_type.upper(), ' certificate ', certificate_name, ' present for ', host_desc, '\n')
+                    self._info(key_type.upper(), ' certificate ', certificate_name, ' present on ', host_desc, '\n')
                 else:
                     self._warn('ERROR: ', key_type.upper(), ' certificate "',
-                               installed_certificate.get_subject().commonName, '" mismatch for ', host_desc, '\n')
+                               installed_certificate.get_subject().commonName, '" mismatch on ', host_desc, '\n')
                 if (len(chain) != len(installed_chain)):
-                    self._warn('ERROR: ', key_type.upper(), ' certificate chain length mismatch for ', host_desc, ', got ', len(installed_chain),
+                    self._warn('ERROR: ', key_type.upper(), ' certificate chain length mismatch on ', host_desc, ', got ', len(installed_chain),
                                ' intermediate(s), expected ', len(chain), '\n')
                 else:
                     for intermediate, installed_intermediate in zip(chain, installed_chain):
                         if (self._certificates_match(intermediate.wrapped, installed_intermediate)):
                             self._info('Intermediate ', key_type.upper(), ' certificate "', intermediate.wrapped.get_subject().commonName,
-                                       '" present for ', host_desc, '\n')
+                                       '" present on ', host_desc, '\n')
                         else:
                             self._warn('ERROR: Intermediate ', key_type.upper(), ' certificate "', installed_intermediate.get_subject().commonName,
-                                       '" mismatch for ', host_desc, '\n')
+                                       '" mismatch on ', host_desc, '\n')
                 if (ocsp_staple):
                     ocsp_status = self.ocsp_response_status(ocsp_staple)
                     if ('good' == ocsp_status.lower()):
-                        self._info('OCSP staple status is GOOD\n')
+                        self._info('OCSP staple status is GOOD on ', host_desc, '\n')
                     else:
-                        self._warn('ERROR: OCSP staple has status: ', ocsp_status.upper(), '\n')
+                        self._warn('ERROR: OCSP staple has status: ', ocsp_status.upper(), ' on ', host_desc, '\n')
                 else:
                     if (self.has_oscp_must_staple(certificate)):
-                        self._warn('ERROR: Certificate has OCSP Must-Staple but no OSCP staple found\n')
+                        self._warn('ERROR: Certificate has OCSP Must-Staple but no OSCP staple found on ', host_desc, '\n')
 
                 if (protocol_info):
                     if ('public_key_pins' in protocol_info):
@@ -2593,15 +2596,15 @@ class AcmeManager(object):
                             digests = {'sha256': self._public_key_digest(key, 'sha256'), 'sha512': self._public_key_digest(key, 'sha512')}
                             for pin in protocol_info['public_key_pins']:
                                 if (digests[pin[0]] == pin[1]):
-                                    self._info('Public key pin found for ', key_type.upper(), ' ', key_purpose, ' key ', key_name, '\n')
+                                    self._info('Public key pin found for ', key_type.upper(), ' ', key_purpose, ' key ', key_name, ' on ', host_desc, '\n')
                                     break
                             else:
-                                self._warn('ERROR: Public key pin missing for ', key_type.upper(), ' ', key_purpose, ' key ', key_name, '\n')
+                                self._warn('ERROR: Public key pin missing for ', key_type.upper(), ' ', key_purpose, ' key ', key_name, ' on ', host_desc, '\n')
                     else:
-                        self._warn('ERROR: Public key pins not found\n')
+                        self._warn('ERROR: Public key pins not found on ', host_desc, '\n')
 
             except Exception as error:
-                self._warn('ERROR: Unable to connect to ', host_desc, ' via ', key_type.upper(), '\n', error, '\n')
+                self._warn('ERROR: Unable to connect to ', host_desc, ' via ', key_type.upper(), '\n', self._indent(error), '\n')
 
     def verify_certificate_installation(self, private_key_names):
         key_type_ciphers = {}
