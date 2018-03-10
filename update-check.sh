@@ -17,5 +17,6 @@ if [[ ${LOG} ]] ; then
     echo "${LOG}"
     echo
     echo "Run 'cd ${DIR} ; sudo git pull' to update"
+    echo
 fi
 popd > /dev/null
