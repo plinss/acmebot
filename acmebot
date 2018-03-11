@@ -391,33 +391,33 @@ class AcmeManager(object):
         if (self._setting('log_level') in ['normal', 'verbose', 'debug', 'detail']):
             self._log(*args)
 
-    def _info(self, *args):
+    def _info(self, *args, color='yellow', style='normal'):
         if ((self.args.verbose or self.args.debug or self.args.detail) and not self.args.quiet):
-            self._colorize(sys.stdout, 'yellow', 'normal', self._message(*args))
+            self._colorize(sys.stdout, color, style, self._message(*args))
         if (self._setting('log_level') in ['verbose', 'debug', 'detail']):
             self._log(*args)
 
-    def _debug(self, *args):
+    def _debug(self, *args, color='dark gray', style='normal'):
         if ((self.args.debug or self.args.detail) and not self.args.quiet):
-            self._colorize(sys.stdout, 'dark gray', 'normal', self._message(*args))
+            self._colorize(sys.stdout, color, style, self._message(*args))
         if (self._setting('log_level') in ['debug', 'detail']):
             self._log(*args)
 
-    def _detail(self, *args):
+    def _detail(self, *args, color='light gray', style='normal'):
         if (self.args.detail and not self.args.quiet):
-            self._colorize(sys.stdout, 'light gray', 'normal', self._message(*args))
+            self._colorize(sys.stdout, color, style, self._message(*args))
         if (self._setting('log_level') == 'detail'):
             self._log(*args)
 
-    def _warn(self, *args):
+    def _warn(self, *args, color='red', style='normal'):
         if (not self.args.quiet):
-            self._colorize(sys.stderr, 'red', 'normal', self._message(*args))
+            self._colorize(sys.stderr, color, style, self._message(*args))
         if (self._setting('log_level') in ['normal', 'debug', 'verbose']):
             self._log(*args)
 
-    def _error(self, *args):
+    def _error(self, *args, color='red', style='bold'):
         message = self._message(*args)
-        self._colorize(sys.stderr, 'red', 'bold', message)
+        self._colorize(sys.stderr, color, style, message)
         self._log(message)
         raise AcmeError(message)
 
@@ -2565,7 +2565,7 @@ class AcmeManager(object):
                 installed_certificate = installed_certificates[0]
                 installed_chain = installed_certificates[1:]
                 if (self._certificates_match(certificate.wrapped, installed_certificate)):
-                    self._info(key_type.upper(), ' certificate ', certificate_name, ' present on ', host_desc, '\n')
+                    self._info(key_type.upper(), ' certificate ', certificate_name, ' present on ', host_desc, '\n', color='green')
                 else:
                     self._warn('ERROR: ', key_type.upper(), ' certificate "',
                                installed_certificate.get_subject().commonName, '" mismatch on ', host_desc, '\n')
@@ -2576,14 +2576,14 @@ class AcmeManager(object):
                     for intermediate, installed_intermediate in zip(chain, installed_chain):
                         if (self._certificates_match(intermediate.wrapped, installed_intermediate)):
                             self._info('Intermediate ', key_type.upper(), ' certificate "', intermediate.wrapped.get_subject().commonName,
-                                       '" present on ', host_desc, '\n')
+                                       '" present on ', host_desc, '\n', color='green')
                         else:
                             self._warn('ERROR: Intermediate ', key_type.upper(), ' certificate "', installed_intermediate.get_subject().commonName,
                                        '" mismatch on ', host_desc, '\n')
                 if (ocsp_staple):
                     ocsp_status = self.ocsp_response_status(ocsp_staple)
                     if ('good' == ocsp_status.lower()):
-                        self._info('OCSP staple status is GOOD on ', host_desc, '\n')
+                        self._info('OCSP staple status is GOOD on ', host_desc, '\n', color='green')
                     else:
                         self._warn('ERROR: OCSP staple has status: ', ocsp_status.upper(), ' on ', host_desc, '\n')
                 else:
@@ -2596,7 +2596,8 @@ class AcmeManager(object):
                             digests = {'sha256': self._public_key_digest(key, 'sha256'), 'sha512': self._public_key_digest(key, 'sha512')}
                             for pin in protocol_info['public_key_pins']:
                                 if (digests[pin[0]] == pin[1]):
-                                    self._info('Public key pin found for ', key_type.upper(), ' ', key_purpose, ' key ', key_name, ' on ', host_desc, '\n')
+                                    self._info('Public key pin found for ', key_type.upper(), ' ', key_purpose, ' key ', key_name, ' on ', host_desc, '\n',
+                                               color='green')
                                     break
                             else:
                                 self._warn('ERROR: Public key pin missing for ', key_type.upper(), ' ', key_purpose, ' key ', key_name, ' on ', host_desc, '\n')
