@@ -51,7 +51,7 @@ DNSTuple = collections.namedtuple('DNSTuple', ['datetime', 'name_server', 'domai
 AuthorizationTuple = collections.namedtuple('AuthorizationTuple', ['datetime', 'authorization_resource'])
 KeyData = collections.namedtuple('KeyData', ['key', 'timestamp'])
 SCTData = collections.namedtuple('SCTData', ['version', 'id', 'timestamp', 'extensions', 'signature'])
-PrivateKeyData = collections.namedtuple('PrivateKeyData', ['name', 'key_options', 'keys', 'backup_keys',
+PrivateKeyData = collections.namedtuple('PrivateKeyData', ['name', 'key_options', 'keys', 'backup_keys', 'previous_keys',
                                                            'generated_key', 'rolled_key', 'changed_key', 'issued_certificates'])
 KeyCipherData = collections.namedtuple('KeyCipherData', ['cipher', 'passphrase', 'forced'])
 CertificateData = collections.namedtuple('CertificateData', ['certificate_name', 'key_type', 'certificate', 'chain', 'config'])
@@ -113,7 +113,7 @@ class AcmeManager(object):
     def __init__(self):
         self.script_dir = os.path.dirname(os.path.realpath(__file__))
         self.script_name = os.path.basename(__file__)
-        self.script_version = '1.10.1'
+        self.script_version = '1.11.0'
 
         self._color_codes = {
             'black': 30,
@@ -261,6 +261,7 @@ class AcmeManager(object):
                 'resource': os.path.join('/var/local', self.script_name),
                 'private_key': '/etc/ssl/private',
                 'backup_key': '/etc/ssl/private',
+                'previous_key': None,
                 'full_key': '/etc/ssl/private',
                 'certificate': '/etc/ssl/certs',
                 'full_certificate': '/etc/ssl/certs',
@@ -283,6 +284,7 @@ class AcmeManager(object):
                 'log': self.script_name + '.log',
                 'private_key': '{name}{suffix}.key',
                 'backup_key': '{name}_backup{suffix}.key',
+                'previous_key': '{name}_previous{suffix}.key',
                 'full_key': '{name}_full{suffix}.key',
                 'certificate': '{name}{suffix}.pem',
                 'full_certificate': '{name}+root{suffix}.pem',
@@ -1363,7 +1365,7 @@ class AcmeManager(object):
         if (not os.path.exists(temp_dir)):
             self._error('Unable to create temp directory: "', temp_dir, '"\n')
         temp_device = self._device_id(temp_dir)
-        for directory_type in ['resource', 'private_key', 'backup_key', 'full_key', 'certificate', 'full_certificate',
+        for directory_type in ['resource', 'private_key', 'backup_key', 'previous_key', 'full_key', 'certificate', 'full_certificate',
                                'chain', 'param', 'challenge', 'hpkp', 'sct', 'archive']:
             directory = self._directory(directory_type)
             if (directory and (self._device_id(directory) != temp_device)):
@@ -1801,14 +1803,11 @@ class AcmeManager(object):
                                _duration(' by ', hpkp_days - youngest_key_age.days), ', rollover skipped\n',
                                'Use "--force" to force key rollover, note that this can brick a web site if HPKP is deployed\n')
 
-            if (rollover):
-                keys = {key_type: KeyData(None, None) for key_type in key_options}
-            else:
-                try:
-                    keys = {key_type: self.load_private_key('private_key', private_key_name, key_type, key_cipher_data) for key_type in key_options}
-                except PrivateKeyError as error:
-                    self._warn('Unable to load private key ', error, '\n')
-                    continue
+            try:
+                keys = {key_type: self.load_private_key('private_key', private_key_name, key_type, key_cipher_data) for key_type in key_options}
+            except PrivateKeyError as error:
+                self._warn('Unable to load private key ', error, '\n')
+                continue
 
             for key_type, options in key_options.items():
                 if (keys[key_type].key and not self._private_key_matches_options(key_type, keys[key_type].key, options)):
@@ -1820,14 +1819,24 @@ class AcmeManager(object):
                                    _duration(' by ', hpkp_days - youngest_key_age.days), ', rollover skipped\n',
                                    'Use "--force" to force key rollover, note that this can brick a web site if HPKP is deployed\n')
 
+            previous_keys = {}
+            try:
+                for key_type in key_options:
+                    previous_keys[key_type] = self.load_private_key('previous_key', private_key_name, key_type, key_cipher_data)
+            except PrivateKeyError as error:
+                self._warn('Unable to load previous private key ', error, '\n')
+                continue
+
             for key_type in key_options:
-                if (backup_keys[key_type].key and not keys[key_type].key):
+                if (backup_keys[key_type].key and (rollover or not keys[key_type].key)):
+                    previous_keys[key_type] = keys[key_type]
                     keys[key_type] = backup_keys[key_type]
                     backup_keys[key_type] = KeyData(None, None)
                     rolled_private_key = True
                     self._add_hook('private_key_rollover', key_name=private_key_name, key_type=key_type,
                                    private_key_file=self._file_path('private_key', private_key_name, key_type),
                                    backup_key_file=self._file_path('backup_key', private_key_name, key_type),
+                                   previous_key_file=self._file_path('previous_key', private_key_name, key_type) if (self._directory('previous_key')) else '',
                                    passphrase=key_cipher_data.passphrase if (key_cipher_data) else None)
             if (rolled_private_key):
                 self._status('Private key rolling over for ', private_key_name, '\n')
@@ -1943,7 +1952,7 @@ class AcmeManager(object):
                     issued_certificates.append(CertificateData(certificate_name, key_type, certificate_resource.body, chain,
                                                                key_certificates[certificate_name]))
 
-            processed_keys.append(PrivateKeyData(private_key_name, key_options, keys, backup_keys,
+            processed_keys.append(PrivateKeyData(private_key_name, key_options, keys, backup_keys, previous_keys,
                                                  generated_private_key, rolled_private_key, changed_private_key, issued_certificates))
 
         # install keys and certificates
@@ -1985,6 +1994,14 @@ class AcmeManager(object):
                         self._add_hook('backup_key_installed', key_name=private_key_name, key_type=key_type,
                                        backup_key_file=self._file_path('backup_key', private_key_name, key_type),
                                        passphrase=key_cipher_data.passphrase if (key_cipher_data) else None)
+                    if (private_key_data.rolled_key and self._directory('previous_key')
+                            and (key_type in private_key_data.previous_keys) and private_key_data.previous_keys[key_type].key):
+                        transactions.append(self.save_private_key('previous_key', private_key_name, key_type,
+                                                                  private_key_data.previous_keys[key_type].key, key_cipher_data,
+                                                                  timestamp=private_key_data.previous_keys[key_type].timestamp))
+                        self._add_hook('previous_key_installed', key_name=private_key_name, key_type=key_type,
+                                       previous_key_file=self._file_path('previous_key', private_key_name, key_type),
+                                       passphrase=key_cipher_data.passphrase if (key_cipher_data) else None)
             except PrivateKeyError as error:
                 self._warn('Unable to encrypt private key ', error, '\n')
                 continue
@@ -1997,7 +2014,9 @@ class AcmeManager(object):
                 hpkp_report_uri = self._option(private_keys[private_key_name], 'hpkp_report_uri')
                 keys = ([private_key_data.keys[key_type].key for key_type in private_key_data.key_options if private_key_data.keys[key_type].key]
                         + [private_key_data.backup_keys[key_type].key for key_type in private_key_data.key_options
-                           if private_key_data.backup_keys[key_type].key])
+                           if private_key_data.backup_keys[key_type].key]
+                        + [private_key_data.previous_keys[key_type].key for key_type in private_key_data.key_options
+                           if private_key_data.previous_keys[key_type].key])
                 if ((1 < len(keys))
                         and (private_key_data.generated_key or private_key_data.changed_key or generated_backup_key
                              or not self.hpkp_headers_present(private_key_name, keys, hpkp_days, pin_subdomains, hpkp_report_uri))):
@@ -2173,7 +2192,7 @@ class AcmeManager(object):
                         if (certificate):
                             certificate_count += 1
                             try:
-                                self.acme_client.revoke(certificate)
+                                self.acme_client.revoke(certificate, 0)
                                 revoked_certificates.append((certificate_name, key_type))
                                 self._status(key_type.upper(), ' certificate ', certificate_name, ' revoked\n')
                             except Exception as error:
@@ -2212,6 +2231,7 @@ class AcmeManager(object):
                 if (len(revoked_certificates) == certificate_count):
                     for key_type in key_options:
                         self.archive_private_key('private_key', private_key_name, key_type, archive_name=private_key_name, archive_date=archive_date)
+                        self.archive_private_key('previous_key', private_key_name, key_type, archive_name=private_key_name, archive_date=archive_date)
                         self.archive_hpkp_headers(private_key_name, archive_name=private_key_name, archive_date=archive_date)
             else:
                 self._warn(private_key_name, ' is not a configured private key\n')
@@ -2242,6 +2262,7 @@ class AcmeManager(object):
                 for key_type in key_options:
                     keys.append((key_type, self.load_private_key('private_key', private_key_name, key_type, key_cipher_data).key))
                     keys.append((key_type, self.load_private_key('backup_key', private_key_name, key_type, key_cipher_data).key))
+                    keys.append((key_type, self.load_private_key('previous_key', private_key_name, key_type, key_cipher_data).key))
             except PrivateKeyError as error:
                 self._warn('Unable to load private key ', error, '\n')
                 continue
@@ -2636,6 +2657,8 @@ class AcmeManager(object):
                 for key_type in key_options:
                     keys.append((key_type, private_key_name, 'private', self.load_private_key('private_key', private_key_name, key_type, key_cipher_data).key))
                     keys.append((key_type, private_key_name, 'backup', self.load_private_key('backup_key', private_key_name, key_type, key_cipher_data).key))
+                    keys.append((key_type, private_key_name, 'previous',
+                                 self.load_private_key('previous_key', private_key_name, key_type, key_cipher_data).key))
             except PrivateKeyError as error:
                 self._warn('Unable to load private key ', error, '\n')
                 continue

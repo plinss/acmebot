@@ -639,6 +639,8 @@ All of these need only be present when the desired value is different from the d
   The default value is ``"/etc/ssl/private"``.
 * ``backup_key`` specifies the directory to store backup private key files.
   The default value is ``"/etc/ssl/private"``.
+* ``previous_key`` specifies the directory to store previously used private key files after key rollover.
+  The default value is ``null``.
 * ``full_key`` specifies the directory to store primary private key files that include the certificate chain.
   The default value is ``"/etc/ssl/private"``.
   Full key files may be omitted by setting this to ``null``.
@@ -1270,11 +1272,13 @@ but will not otherwise affect the operation of this tool.
 * ``clear_http_challenge`` is called for each HTTP challenge file that is removed.
   Available fields are ``domain``, and ``challenge_file``.
 * ``private_key_rollover`` is called when a private key is replaced by a backup private key.
-  Available fields are ``key_name``, ``key_type``, ``backup_key_file``, ``private_key_file``, and ``passphrase``.
+  Available fields are ``key_name``, ``key_type``, ``backup_key_file``, ``private_key_file``, ``previous_key_file``, and ``passphrase``.
 * ``private_key_installed`` is called when a private key is installed.
   Available fields are ``key_name``, ``key_type``, ``private_key_file``, and ``passphrase``.
 * ``backup_key_installed`` is called when a backup private key is installed.
   Available fields are ``key_name``, ``key_type``, ``backup_key_file``, and ``passphrase``.
+* ``previous_key_installed`` is called when a previous private key is installed after key rollover.
+  Available fields are ``key_name``, ``key_type``, ``previous_key_file``, and ``passphrase``.
 * ``hpkp_header_installed`` is called when a HPKP header file is installed.
   Available fields are ``key_name``, ``server``, ``header``, and ``hpkp_file``.
 * ``certificate_installed`` is called when a certificate file is installed.
@@ -1554,6 +1558,14 @@ generate a new backup private key,
 generate new custom Diffie-Hellman parameters,
 and reset HPKP headers and TLSA records as appropriate.
 
+If the ``previous_key`` directory is specified,
+the current primary private key will be stored in that directory as a previous private key.
+While previous private key files are present,
+their key signatures will be added to HPKP pins and TLSA records.
+This can assist in key rollover when keys are pinned for subdomains and private keys are shared between multiple servers.
+Once the new primary and backup keys have been distributed to the other servers,
+the previous private key file may be safely removed.
+
 To manually rollover private keys, simply run the tool with the ``--rollover`` option.
 You can specify the names of individual private keys on the command line to rollover,
 otherwise all private keys will be rolled over.
@@ -1721,5 +1733,8 @@ otherwise it is recommended to use spki selectors for TLSA records so that certi
 
 If private keys are shared between a master and follower,
 be sure to turn off ``auto_rollover`` and only perform private key rollovers on the master.
+It is also useful to specify the ``previous_key`` directory to preserve previous key pins during the key rollover process.
 After a private key rollover, copy the new primary and backup private key files to the followers.
 The follower will automatically detect the new private key and re-issue certificates on the next run.
+Once all the followers have updated their certificates to the new keys,
+you can safely delete the previous private key file.
