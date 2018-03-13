@@ -1927,7 +1927,7 @@ class AcmeManager(object):
                         certificate_resource = self.acme_client.request_issuance(josepy.ComparableX509(csr),
                                                                                  [self.authorizations[domain_name] for domain_name in alt_names])
                     except Exception as error:
-                        self._warn(key_type.upper(), ' certificate issuance failed\n', error, '\n')
+                        self._warn(key_type.upper(), ' certificate issuance failed\n', self._indent(error), '\n')
                         if (rolled_private_key):
                             issued_certificates = []    # do not partially install new certificates if private key changed
                             break
