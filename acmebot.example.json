@@ -14,7 +14,7 @@
         "ecparam_curve": "secp384r1",
         "file_user": "root",
         "file_group": "ssl-cert",
-        "hpkp_days": 30,
+        "hpkp_days": 60,
         "pin_subdomains": true,
         "hpkp_report_uri": null,
         "ocsp_must_staple": false,

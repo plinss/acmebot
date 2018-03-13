@@ -529,7 +529,7 @@ All of these need only be present when the desired value is different from the d
   The default value is ``"ssl-cert"``.
   Note that this tool must run as root, or another user that has rights to set the file ownership to this group.
 * ``hpkp_days`` specifies the number of days that HPKP pins should be cached for.
-  The default value is ``30``.
+  The default value is ``60``.
   HPKP pin files can be turned off by setting this value to ``0`` or ``null``.
 * ``pin_subdomains`` specifies whether the ``includeSubdomains`` directive should be included in the HPKP headers.
   The default value is ``true``.
@@ -599,7 +599,7 @@ Example::
             "ecparam_curve": "secp384r1",
             "file_user": "root",
             "file_group": "ssl-cert",
-            "hpkp_days": 30,
+            "hpkp_days": 60,
             "pin_subdomains": true,
             "hpkp_report_uri": null,
             "ocsp_must_staple": false,
@@ -845,7 +845,7 @@ Example::
                 "key_passphrase": null,
                 "expiration_days": 730,
                 "auto_rollover": false,
-                "hpkp_days": 30,
+                "hpkp_days": 60,
                 "pin_subdomains": true,
                 "hpkp_report_uri": null,
                 "ocsp_must_staple": false,
@@ -909,7 +909,7 @@ Example::
                 "key_passphrase": null,
                 "expiration_days": 730,
                 "auto_rollover": false,
-                "hpkp_days": 30,
+                "hpkp_days": 60,
                 "pin_subdomains": true,
                 "hpkp_report_uri": null
             }
