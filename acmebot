@@ -113,7 +113,7 @@ class AcmeManager(object):
     def __init__(self):
         self.script_dir = os.path.dirname(os.path.realpath(__file__))
         self.script_name = os.path.basename(__file__)
-        self.script_version = '1.11.0'
+        self.script_version = '1.11.1'
 
         self._color_codes = {
             'black': 30,
@@ -2264,7 +2264,9 @@ class AcmeManager(object):
                 for key_type in key_options:
                     keys.append((key_type, self.load_private_key('private_key', private_key_name, key_type, key_cipher_data).key))
                     keys.append((key_type, self.load_private_key('backup_key', private_key_name, key_type, key_cipher_data).key))
-                    keys.append((key_type, self.load_private_key('previous_key', private_key_name, key_type, key_cipher_data).key))
+                    previous_key = self.load_private_key('previous_key', private_key_name, key_type, key_cipher_data).key
+                    if (previous_key):
+                        keys.append((key_type, previous_key))
             except PrivateKeyError as error:
                 self._warn('Unable to load private key ', error, '\n')
                 continue
@@ -2659,8 +2661,9 @@ class AcmeManager(object):
                 for key_type in key_options:
                     keys.append((key_type, private_key_name, 'private', self.load_private_key('private_key', private_key_name, key_type, key_cipher_data).key))
                     keys.append((key_type, private_key_name, 'backup', self.load_private_key('backup_key', private_key_name, key_type, key_cipher_data).key))
-                    keys.append((key_type, private_key_name, 'previous',
-                                 self.load_private_key('previous_key', private_key_name, key_type, key_cipher_data).key))
+                    previous_key = self.load_private_key('previous_key', private_key_name, key_type, key_cipher_data).key
+                    if (previous_key):
+                        keys.append((key_type, private_key_name, 'previous', previous_key))
             except PrivateKeyError as error:
                 self._warn('Unable to load private key ', error, '\n')
                 continue
