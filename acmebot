@@ -555,8 +555,10 @@ class AcmeManager(object):
         return self._config('file_names', file_type, '')
 
     def _file_path(self, file_type, file_name, key_type=None, **kwargs):
-        return os.path.join(self._directory(file_type).format(name=file_name, key_type=key_type, suffix=self._key_type_suffix(key_type), **kwargs),
-                            self._file_name(file_type).format(name=file_name, key_type=key_type, suffix=self._key_type_suffix(key_type), **kwargs))
+        if (self._directory(file_type) is not None):
+            return os.path.join(self._directory(file_type).format(name=file_name, key_type=key_type, suffix=self._key_type_suffix(key_type), **kwargs),
+                                self._file_name(file_type).format(name=file_name, key_type=key_type, suffix=self._key_type_suffix(key_type), **kwargs))
+        return ''
 
     def _service(self, service_name):
         return self._config('services', service_name)
@@ -1836,7 +1838,7 @@ class AcmeManager(object):
                     self._add_hook('private_key_rollover', key_name=private_key_name, key_type=key_type,
                                    private_key_file=self._file_path('private_key', private_key_name, key_type),
                                    backup_key_file=self._file_path('backup_key', private_key_name, key_type),
-                                   previous_key_file=self._file_path('previous_key', private_key_name, key_type) if (self._directory('previous_key')) else '',
+                                   previous_key_file=self._file_path('previous_key', private_key_name, key_type),
                                    passphrase=key_cipher_data.passphrase if (key_cipher_data) else None)
             if (rolled_private_key):
                 self._status('Private key rolling over for ', private_key_name, '\n')
