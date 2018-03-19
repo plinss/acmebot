@@ -6,6 +6,43 @@
 # apt-get install build-essential libssl-dev libffi-dev python3-dev python3-pip
 # pip3 install -r requirements.txt
 
+
+def verify_requirements():
+    import os
+    import pkg_resources
+    import re
+    requirements_file_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'requirements.txt')
+    if (os.path.exists(requirements_file_path)):
+        requirements_met = True
+        with open(requirements_file_path, 'r') as requirements_file:
+            requirements = requirements_file.read()
+            for requirement in requirements.split('\n'):
+                if (requirement):
+                    package, comparison, version = (re.split('\s?(<?>?==?)\s?', requirement) + ['', ''])[:3]
+                    try:
+                        installed_version = pkg_resources.get_distribution(package).version
+                        if ('<=' == comparison):
+                            if (installed_version > version):
+                                print('Package', package, 'is more recent than', version)
+                                requirements_met = False
+                        elif ('==' == comparison):
+                            if (installed_version != version):
+                                print('Package', package, 'is not version', version)
+                                requirements_met = False
+                        elif ('>=' == comparison):
+                            if (installed_version < version):
+                                print('Package', package, 'is older than', version)
+                                requirements_met = False
+                    except Exception:
+                        print('Package', package, 'is not installed')
+                        requirements_met = False
+        if (not requirements_met):
+            print('Run "pip3 install -r {path}" to complete installation'.format(path=requirements_file_path))
+            exit()
+
+verify_requirements()
+
+
 import argparse
 import base64
 import binascii
@@ -29,6 +66,7 @@ import tempfile
 import time
 import urllib
 
+
 import DNS
 
 import OpenSSL
@@ -47,8 +85,9 @@ import josepy
 import pkg_resources
 
 
-DNSTuple = collections.namedtuple('DNSTuple', ['datetime', 'name_server', 'domain_name', 'response', 'attempt_count'])
-AuthorizationTuple = collections.namedtuple('AuthorizationTuple', ['datetime', 'authorization_resource'])
+DNSTuple = collections.namedtuple('DNSTuple', ['datetime', 'name_server', 'domain_name', 'identifier', 'response', 'attempt_count'])
+ChallengeTuple = collections.namedtuple('ChallengeTuple', ['identifier', 'response'])
+AuthorizationTuple = collections.namedtuple('AuthorizationTuple', ['datetime', 'domain_name', 'authorization_resource'])
 KeyData = collections.namedtuple('KeyData', ['key', 'timestamp'])
 SCTData = collections.namedtuple('SCTData', ['version', 'id', 'timestamp', 'extensions', 'signature'])
 PrivateKeyData = collections.namedtuple('PrivateKeyData', ['name', 'key_options', 'keys', 'backup_keys', 'previous_keys',
@@ -113,7 +152,7 @@ class AcmeManager(object):
     def __init__(self):
         self.script_dir = os.path.dirname(os.path.realpath(__file__))
         self.script_name = os.path.basename(__file__)
-        self.script_version = '1.11.1'
+        self.script_version = '2.0.0'
 
         self._color_codes = {
             'black': 30,
@@ -212,7 +251,6 @@ class AcmeManager(object):
             sys.excepthook = debug_hook
 
         self.acme_client = None
-        self.authorizations = {}
         self.key_passphrases = {}
         self.updated_services = set()
         self.hooks = collections.OrderedDict()
@@ -246,11 +284,12 @@ class AcmeManager(object):
                 'dns_lookup_delay': 10,
                 'max_authorization_attempts': 30,
                 'authorization_delay': 10,
+                'cert_poll_time': 30,
                 'max_ocsp_verify_attempts': 10,
                 'ocsp_verify_retry_delay': 5,
                 'min_run_delay': 300,
                 'max_run_delay': 3600,
-                'acme_directory_url': 'https://acme-v01.api.letsencrypt.org/directory',
+                'acme_directory_url': 'https://acme-v02.api.letsencrypt.org/directory',
                 'reload_zone_command': '/etc/bind/reload-zone.sh',
                 'nsupdate_command': '/usr/bin/nsupdate',
                 'verify': None
@@ -485,8 +524,6 @@ class AcmeManager(object):
             return -1
 
     def _rename_file(self, old_file_path, new_file_path, chmod=None, timestamp=None):
-        old_file_path = old_file_path.replace('*', '_')
-        new_file_path = new_file_path.replace('*', '_')
         if (os.path.isfile(old_file_path)):
             self._makedir(os.path.dirname(new_file_path), chmod)
             os.rename(old_file_path, new_file_path)
@@ -556,8 +593,9 @@ class AcmeManager(object):
 
     def _file_path(self, file_type, file_name, key_type=None, **kwargs):
         if (self._directory(file_type) is not None):
-            return os.path.join(self._directory(file_type).format(name=file_name, key_type=key_type, suffix=self._key_type_suffix(key_type), **kwargs),
-                                self._file_name(file_type).format(name=file_name, key_type=key_type, suffix=self._key_type_suffix(key_type), **kwargs))
+            directory = self._directory(file_type).format(name=file_name, key_type=key_type, suffix=self._key_type_suffix(key_type), **kwargs)
+            file_name = self._file_name(file_type).format(name=file_name, key_type=key_type, suffix=self._key_type_suffix(key_type), **kwargs)
+            return os.path.join(directory, file_name.replace('*', '_'))
         return ''
 
     def _service(self, service_name):
@@ -688,13 +726,15 @@ class AcmeManager(object):
         return False
 
     def _set_dns_challenges(self, zone_name, zone_key, challenges):
-        updates = ['update add _acme-challenge.{host} 300 TXT "{challenge}"'.format(host=host_name, challenge=challenges[host_name])
-                   for host_name in challenges]
+        updates = ['update add _acme-challenge.{host} 300 TXT "{response}"'.format(host=challenges[domain_name].identifier,
+                                                                                   response=challenges[domain_name].response)
+                   for domain_name in challenges]
         return self._update_zone(updates, zone_name, zone_key, 'Set DNS challenges')
 
     def _remove_dns_challenges(self, zone_name, zone_key, challenges):
-        updates = ['update delete _acme-challenge.{host} 300 TXT "{challenge}"'.format(host=host_name, challenge=challenges[host_name])
-                   for host_name in challenges]
+        updates = ['update delete _acme-challenge.{host} 300 TXT "{response}"'.format(host=challenges[domain_name].identifier,
+                                                                                      response=challenges[domain_name].response)
+                   for domain_name in challenges]
         self._update_zone(updates, zone_name, zone_key, 'Remove DNS challenges')
 
     def _tlsa_data(self, records, certificates=None, chain=[], private_keys=None):
@@ -917,7 +957,7 @@ class AcmeManager(object):
 
     def _certificate_bytes(self, certificate):
         if (certificate):
-            return OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_ASN1, certificate.wrapped)
+            return OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_ASN1, certificate)
         return None
 
     def _generate_hpkp_headers(self, file_name, private_keys, hpkp_days, pin_subdomains, report_uri):
@@ -989,7 +1029,7 @@ class AcmeManager(object):
         return self._public_key_bytes(private_key) == self._certificate_public_key_bytes(certificate)
 
     def _certificate_digest(self, certificate, digest='sha256'):
-        return certificate.wrapped.digest(digest).decode('ascii').replace(':', '').lower()
+        return certificate.digest(digest).decode('ascii').replace(':', '').lower()
 
     def _certificates_match(self, certificate1, certificate2):
         return (OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_PEM, certificate1) ==
@@ -998,7 +1038,7 @@ class AcmeManager(object):
     def load_certificate(self, file_type, file_name, key_type):
         try:
             with open(self._file_path(file_type, file_name, key_type), 'r') as certificate_file:
-                return josepy.ComparableX509(OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, certificate_file.read().encode('ascii')))
+                return OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, certificate_file.read().encode('ascii'))
         except Exception:
             return None
 
@@ -1018,14 +1058,14 @@ class AcmeManager(object):
         self._archive_file(file_type, self._file_path(file_type, file_name, key_type), archive_name=archive_name, archive_date=archive_date)
 
     def _save_certificate(self, certificate_file, certificate, chain=None, root_certificate=None, dhparam_pem=None, ecparam_pem=None):
-        certificate_pem = OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_PEM, certificate.wrapped).decode('ascii')
+        certificate_pem = OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_PEM, certificate).decode('ascii')
         certificate_not_before = self._datetime_from_asn1_generaltime(certificate.get_notBefore())
         certificate_file.write(certificate.get_subject().commonName + ' issued at ' + certificate_not_before.strftime('%Y-%m-%d %H:%M:%S UTC') + '\n')
         certificate_file.write(certificate_pem)
         if (chain):
             self._save_chain(certificate_file, chain, '\n')
         if (root_certificate):
-            root_certificate_pem = OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_PEM, root_certificate.wrapped).decode('ascii')
+            root_certificate_pem = OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_PEM, root_certificate).decode('ascii')
             certificate_file.write('\n' + root_certificate.get_subject().commonName + '\n')
             certificate_file.write(root_certificate_pem)
         if (dhparam_pem):
@@ -1049,10 +1089,17 @@ class AcmeManager(object):
                     index = 1
             certificate_pems = re.findall('-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----', pem_data, re.DOTALL)[index:]
             for certificate_pem in certificate_pems:
-                chain.append(josepy.ComparableX509(OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, certificate_pem.encode('ascii'))))
+                chain.append(OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, certificate_pem.encode('ascii')))
         except Exception:
             pass
         return chain
+
+    def decode_full_chain(self, full_chain_pem):
+        full_chain = []
+        certificate_pems = re.findall('-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----', full_chain_pem, re.DOTALL)
+        for certificate_pem in certificate_pems:
+            full_chain.append(OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, certificate_pem.encode('ascii')))
+        return full_chain[0], full_chain[1:]
 
     def save_chain(self, file_name, key_type, chain):
         with FileTransaction('chain', self._file_path('chain', file_name, key_type), chmod=0o644) as transaction:
@@ -1064,7 +1111,7 @@ class AcmeManager(object):
 
     def _save_chain(self, chain_file, chain, lead_in=''):
         for chain_certificate in chain:
-            chain_certificate_pem = OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_PEM, chain_certificate.wrapped).decode('ascii')
+            chain_certificate_pem = OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_PEM, chain_certificate).decode('ascii')
             chain_file.write(lead_in + chain_certificate.get_subject().commonName + '\n')
             chain_file.write(chain_certificate_pem)
             lead_in = '\n'
@@ -1313,7 +1360,7 @@ class AcmeManager(object):
         req.set_version(2)
         req.set_pubkey(private_key)
         req.sign(private_key, 'sha256')
-        return req
+        return OpenSSL.crypto.dump_certificate_request(OpenSSL.crypto.FILETYPE_PEM, req)
 
     def _device_id(self, directory):
         directory = os.path.abspath(directory)
@@ -1463,6 +1510,19 @@ class AcmeManager(object):
             private_keys[private_key_name]['key_types'] = [key_type for key_type in key_options if (key_type in certificate_key_types)]
         self.config['private_keys'] = private_keys
 
+    def _user_agent(self):
+        return '{script}/{version} acme-python/{acme_version}'.format(script=self.script_name, version=self.script_version,
+                                                                      acme_version=pkg_resources.get_distribution('acme').version)
+
+    def _generate_client_key(self, client_key_path):
+        self.client_key = josepy.JWKRSA(key=rsa.generate_private_key(public_exponent=65537, key_size=4096, backend=default_backend()))
+        try:
+            with self._open_file(client_key_path, 'w', 0o600) as client_key_file:
+                json.dump(self.client_key.fields_to_partial_json(), client_key_file)
+                self._detail('Saved client key ', client_key_path, '\n')
+        except Exception:
+            self._error('Unable to save client key to ', client_key_path, '\n')
+
     def connect_client(self):
         resource_dir = os.path.join(self.script_dir, self._directory('resource'))
         self._makedir(resource_dir, 0o600)
@@ -1473,123 +1533,106 @@ class AcmeManager(object):
                 self._detail('Loaded clent key ', client_key_path, '\n')
         else:
             self._status('Client key not present, generating\n')
-            self.client_key = josepy.JWKRSA(key=rsa.generate_private_key(public_exponent=65537, key_size=4096, backend=default_backend()))
-            try:
-                with self._open_file(client_key_path, 'w', 0o600) as client_key_file:
-                    json.dump(self.client_key.fields_to_partial_json(), client_key_file)
-                    self._detail('Saved client key ', client_key_path, '\n')
-            except Exception:
-                self._error('Unable to save client key to ', client_key_path, '\n')
+            self._generate_client_key(client_key_path)
 
-        try:
-            user_agent = '{script}/{version} acme-python/{acme_version}'.format(script=self.script_name, version=self.script_version,
-                                                                                acme_version=pkg_resources.get_distribution('acme').version)
-            network = client.ClientNetwork(self.client_key, user_agent=user_agent)
-            self.acme_client = client.Client(self._setting('acme_directory_url'), self.client_key, net=network)
-        except Exception as error:
-            self._error("Can't connect to ACME service.\n", error, '\n')
-
+        registration = None
         registration_path = os.path.join(resource_dir, 'registration.json')
         if (os.path.isfile(registration_path)):
             with open(registration_path) as registration_file:
-                self.registration = messages.RegistrationResource.json_loads(registration_file.read())
+                registration = messages.RegistrationResource.json_loads(registration_file.read())
                 self._detail('Loaded registration ', registration_path, '\n')
+                acme_url = urllib.parse.urlparse(self._setting('acme_directory_url'))
+                reg_url = urllib.parse.urlparse(registration.uri)
+                if ((acme_url[0] != reg_url[0]) or (acme_url[1] != reg_url[1])):
+                    self._status('ACME service URL has changed, re-registering with new client key\n')
+                    registration = None
+                    # ACME-ISSUE Resetting the client key should not be necessary, but the new registration comes back empty if we use the old key
+                    self._archive_file('client', client_key_path)
+                    self._generate_client_key(client_key_path)
 
+        if (registration):
             try:
-                self.registration = self.acme_client.query_registration(self.registration)
+                network = client.ClientNetwork(self.client_key, account=registration, user_agent=self._user_agent())
+                self.acme_client = client.BackwardsCompatibleClientV2(network, self.client_key, self._setting('acme_directory_url'))
             except Exception as error:
-                self._error("Can't query ACME registration.\n", error, '\n')
+                self._error("Can't connect to ACME service.\n", error, '\n')
         else:
             self._detail('Registering client\n')
             try:
-                self.registration = self.acme_client.register(messages.NewRegistration.from_data(email=self._account('email')))
+                network = client.ClientNetwork(self.client_key, user_agent=self._user_agent())
+                self.acme_client = client.BackwardsCompatibleClientV2(network, self.client_key, self._setting('acme_directory_url'))
             except Exception as error:
-                self._error("Can't register with ACME service.\n", error, '\n')
-            if (self.registration.terms_of_service):
+                self._error("Can't connect to ACME service.\n", error, '\n')
+
+            def _accept_tos(tos):
                 if (sys.stdin.isatty()):
-                    self._status('ACME service has the following terms of service:\n', self.registration.terms_of_service, '\n')
-                    answer = input('Accept? (y/N) ')
+                    self._status('ACME service has the following terms of service:\n', tos, '\n')
+                    answer = input('Accept? (Y/n) ')
                     if (answer and not answer.lower().startswith('y')):
                         self._archive_file('client', client_key_path)
-                        self._archive_file('client', registration_path)
                         self._error('Terms of service rejected.\n')
                     self._detail('Terms of service accepted.\n')
                 else:
-                    self._detail('Auto-accepting TOS: ', self.registration.terms_of_service, '\n')
+                    self._detail('Auto-accepting TOS: ', tos, '\n')
+
             try:
-                self.acme_client.agree_to_tos(self.registration)
-                self.registration = self.acme_client.query_registration(self.registration)   # get agreement info
+                reg = messages.NewRegistration.from_data(email=self._account('email'))
+                registration = self.acme_client.new_account_and_tos(reg, _accept_tos)
             except Exception as error:
-                self._error("Can't accept ACME terms of service.\n", error, '\n')
-        with FileTransaction('registration', registration_path, chmod=0o600) as transaction:
-            transaction.write(self.registration.json_dumps())
-            self._detail('Saved registration ', registration_path, '\n')
-        try:
-            self._commit_file_transactions([transaction], archive_name=None)
-        except Exception:
-            self._error('Unable to save registration to ', registration_path, '\n')
+                self._error("Can't register with ACME service.\n", error, '\n')
+
+            with FileTransaction('registration', registration_path, chmod=0o600) as transaction:
+                transaction.write(registration.json_dumps())
+                self._detail('Saved registration ', registration_path, '\n')
+            try:
+                self._commit_file_transactions([transaction], archive_name=None)
+            except Exception:
+                self._error('Unable to save registration to ', registration_path, '\n')
 
     def disconnect_client(self):
         if (self.acme_client):
             del self.acme_client
 
-    def process_authorizations(self, fetch_only, private_key_names=[]):
-        private_keys = self._config('private_keys')
-        authorizations = self._config('authorizations')
+    def _is_wildcard_auth(self, authorization_resource):
+        if (hasattr(authorization_resource.body, 'wildcard')):
+            return authorization_resource.body.wildcard
+        if (not self._get_challenge(authorization_resource, 'http-01')):    # boulder not currently returning the wildcard field
+            return True                                                     # so if no http challenge, presume this is a wildcard auth
+        return False
 
-        domain_challenges = {}
-        for private_key_name in private_keys:
-            if (private_key_names and (private_key_name not in private_key_names)):
-                continue
-            key_certificates = private_keys[private_key_name].get('certificates', {})
-            for certificate_name in key_certificates:
-                for zone_name in key_certificates[certificate_name]['alt_names']:
-                    if (zone_name not in domain_challenges):
-                        domain_challenges[zone_name] = []
-                    for domain_name in self._get_domain_names(key_certificates[certificate_name]['alt_names'], zone_name):
-                        if (domain_name not in domain_challenges[zone_name]):
-                            domain_challenges[zone_name].append(domain_name)
-
-        if (not fetch_only):
-            for zone_name in authorizations:
-                if (zone_name not in domain_challenges):
-                    domain_challenges[zone_name] = []
-                for domain_name in self._get_domain_names(authorizations, zone_name):
-                    if (domain_name not in domain_challenges[zone_name]):
-                        domain_challenges[zone_name].append(domain_name)
-
-        # get authorizations
+    def _handle_authorizations(self, order, fetch_only, domain_names):
         authorization_resources = {}
-        for zone_name in domain_challenges:
-            for domain_name in domain_challenges[zone_name]:
-                self._debug('Request authorization for ', domain_name, '\n')
-                try:
-                    authorization_resource = self.acme_client.request_domain_challenges(domain_name, new_authzr_uri=self.registration.new_authzr_uri)
-                    if (messages.STATUS_VALID == authorization_resource.body.status):
-                        self.authorizations[domain_name] = authorization_resource
-                        self._debug(domain_name, ' already authorized\n')
-                    elif (messages.STATUS_PENDING == authorization_resource.body.status):
-                        if (not fetch_only):
-                            authorization_resources[domain_name] = authorization_resource
-                        else:
-                            self._debug(domain_name, ' not authorized\n')
-                    else:
-                        self._error('Unexpected status "', authorization_resource.body.status, '" for authorization of ', domain_name, '\n')
-                except Exception as error:
-                    self._warn('Error requesting authorization for ', domain_name, ':\n', error, '\n')
+
+        for authorization_resource in order.authorizations:
+            domain_name = ('*.' if (self._is_wildcard_auth(authorization_resource)) else '') + authorization_resource.body.identifier.value
+            if (messages.STATUS_VALID == authorization_resource.body.status):
+                self._detail(domain_name, ' already authorized\n')
+            elif (messages.STATUS_PENDING == authorization_resource.body.status):
+                if (not fetch_only):
+                    authorization_resources[domain_name] = authorization_resource
+                    self._debug('Requesting authorization for ', domain_name, '\n')
+                else:
+                    self._debug(domain_name, ' not authorized\n')
+            else:
+                self._error('Unexpected status "', authorization_resource.body.status, '" for authorization of ', domain_name, '\n')
 
         # set challenge responses
         challenge_types = {}
         challenge_dns_responses = {}
         challenge_http_responses = {}
-        for zone_name in domain_challenges:
+        for zone_name in domain_names:
             zone_responses = {}
-            for domain_name in domain_challenges[zone_name]:
+            for domain_name in domain_names[zone_name]:
                 if (domain_name in authorization_resources):
-                    http_challenge_directory = self._http_challenge_directory(domain_name, zone_name)
+                    authorization_resource = authorization_resources[domain_name]
+                    identifier = authorization_resource.body.identifier.value
+                    http_challenge_directory = self._http_challenge_directory(identifier, zone_name)
                     if (http_challenge_directory):
                         challenge_types[domain_name] = 'http-01'
-                        challenge = self._get_challenge(authorization_resources[domain_name], challenge_types[domain_name])
+                        challenge = self._get_challenge(authorization_resource, challenge_types[domain_name])
+                        if (not challenge):
+                            self._warn('Unable to use http-01 challenge for ', domain_name, '\n')
+                            continue
                         challenge_file_path = os.path.join(http_challenge_directory, challenge.chall.encode('token'))
                         self._debug('Setting http acme-challenge for ', domain_name, ' in file ', challenge_file_path, '\n')
                         try:
@@ -1601,10 +1644,14 @@ class AcmeManager(object):
                             self._warn('Unable to create acme-challenge file ', challenge_file_path, '\n', self._indent(error), '\n')
                     else:
                         challenge_types[domain_name] = 'dns-01'
-                        challenge = self._get_challenge(authorization_resources[domain_name], challenge_types[domain_name])
-                        zone_responses[domain_name] = challenge.validation(self.client_key)
-                        self._debug('Setting DNS for _acme-challenge.', domain_name, ' = "', zone_responses[domain_name], '"\n')
-                        self._add_hook('set_dns_challenge', zone=zone_name, domain=domain_name, challenge=zone_responses[domain_name])
+                        challenge = self._get_challenge(authorization_resource, challenge_types[domain_name])
+                        if (not challenge):
+                            self._warn('Unable to use dns-01 challenge for ', domain_name, '\n')
+                            continue
+                        response = challenge.validation(self.client_key)
+                        zone_responses[domain_name] = ChallengeTuple(identifier, response)
+                        self._debug('Setting DNS for _acme-challenge.', domain_name, ' = "', response, '"\n')
+                        self._add_hook('set_dns_challenge', zone=zone_name, domain=domain_name, challenge=response)
             if (zone_responses):
                 zone_key = self._zone_key(zone_name)
                 if (zone_key):
@@ -1613,7 +1660,7 @@ class AcmeManager(object):
                 else:
                     try:
                         with self._open_file(self._file_path('challenge', zone_name), 'w', 0o644) as challenge_file:
-                            json.dump(zone_responses, challenge_file)
+                            json.dump({domain_name: response.response for domain_name, response in zone_responses.items()}, challenge_file)
                         challenge_dns_responses[zone_name] = zone_responses
                     except Exception as error:
                         self._warn('Unable to create acme-challenge file for zone ', zone_name, '\n', self._indent(error), '\n')
@@ -1628,23 +1675,24 @@ class AcmeManager(object):
             name_servers = self._get_name_servers(zone_name)
             self._detail('Got name servers ', name_servers, ' for ', zone_name, '\n')
             for name_server in name_servers:
-                waiting += [DNSTuple(datetime.datetime.now(), name_server, domain_name, challenge_dns_responses[zone_name][domain_name], 0)
+                waiting += [DNSTuple(datetime.datetime.now(), name_server, domain_name,
+                                     challenge_dns_responses[zone_name][domain_name].identifier, challenge_dns_responses[zone_name][domain_name].response, 0)
                             for domain_name in challenge_dns_responses[zone_name]]
         while waiting:
-            when, name_server, domain_name, response, attempt_count = heapq.heappop(waiting)
+            when, name_server, domain_name, identifier, response, attempt_count = heapq.heappop(waiting)
             now = datetime.datetime.now()
             if (now < when):
                 seconds = (when - now).seconds
                 if (0 < seconds):
                     time.sleep(seconds)
-            dns_challenges = self._lookup_dns_challenge(name_server, domain_name)
+            dns_challenges = self._lookup_dns_challenge(name_server, identifier)
             if (response in dns_challenges):
                 self._debug('Challenge present for ', domain_name, ' at ', name_server, '\n')
             else:
                 self._detail('Challenge missing for ', domain_name, ' at ', name_server, '\n')
                 if (attempt_count < self._setting('max_dns_lookup_attempts')):
                     heapq.heappush(waiting, DNSTuple(datetime.datetime.now() + datetime.timedelta(seconds=self._setting('dns_lookup_delay')),
-                                                     name_server, domain_name, response, attempt_count + 1))
+                                                     name_server, domain_name, identifier, response, attempt_count + 1))
                 else:
                     self._warn('Maximum attempts reached waiting for DNS challenge ', domain_name, ' at ', name_server, '\n')
         if (challenge_dns_responses):
@@ -1652,56 +1700,58 @@ class AcmeManager(object):
 
         # answer challenges
         for domain_name in authorization_resources:
+            authorization_resource = authorization_resources[domain_name]
             self._debug('Answering challenge for ', domain_name, '\n')
-            challenge = self._get_challenge(authorization_resources[domain_name], challenge_types[domain_name])
+            challenge = self._get_challenge(authorization_resource, challenge_types[domain_name])
             try:
                 self.acme_client.answer_challenge(challenge, challenge.response(self.client_key))
             except Exception as error:
                 self._warn('Error answering challenge for ', domain_name, ':\n', error, '\n')
 
         # poll for authorizations
-        waiting = [AuthorizationTuple(datetime.datetime.now(), authorization_resource) for authorization_resource in authorization_resources.values()]
+        waiting = [AuthorizationTuple(datetime.datetime.now(), domain_name, authorization_resource)
+                   for domain_name, authorization_resource in authorization_resources.items()]
         attempts = collections.defaultdict(int)
-        exhausted = []
-        failed = []
+        exhausted = {}
+        failed = {}
         while waiting:
-            when, authorization_resource = heapq.heappop(waiting)
+            when, domain_name, authorization_resource = heapq.heappop(waiting)
             now = datetime.datetime.now()
             if (now < when):
                 seconds = (when - now).seconds
                 if (0 < seconds):
                     time.sleep(seconds)
-            self._debug('Polling for ', authorization_resource.body.identifier.value, '\n')
+            self._debug('Polling for ', domain_name, '\n')
             try:
                 authorization_resource, response = self.acme_client.poll(authorization_resource)
                 if (200 != response.status_code):
-                    self._warn(response, ' while waiting for domain challenge\n')
+                    self._warn(response, ' while waiting for domain challenge for ', domain_name, '\n')
                     heapq.heappush(waiting, AuthorizationTuple(
                         self.acme_client.retry_after(response, default=self._setting('authorization_delay')),
-                        authorization_resource))
+                        domain_name, authorization_resource))
                     continue
             except Exception as error:
-                self._warn('Error polling for authorization for ', authorization_resource.body.identifier.value, ':\n', error, '\n')
+                self._warn('Error polling for authorization for ', domain_name, ':\n', error, '\n')
                 continue
 
+            authorization_resources[domain_name] = authorization_resource
             attempts[authorization_resource] += 1
             if (messages.STATUS_VALID == authorization_resource.body.status):
-                self.authorizations[authorization_resource.body.identifier.value] = authorization_resource
                 self._debug('Authorization received\n')
                 continue
             elif (messages.STATUS_INVALID == authorization_resource.body.status):
                 error = self._get_challenge(authorization_resource, challenge_types[domain_name]).error
                 self._debug('Invalid authorization: ', error.detail if (error) else 'Unknown error', '\n')
-                failed.append(authorization_resource)
+                failed[domain_name] = authorization_resource
             elif (messages.STATUS_PENDING == authorization_resource.body.status):
                 if (self._setting('max_authorization_attempts') < attempts[authorization_resource]):
-                    exhausted.append(authorization_resource)
+                    exhausted[domain_name] = authorization_resource
                     self._detail('Giving up\n')
                 else:
                     self._detail('Retrying\n')
                     heapq.heappush(waiting, AuthorizationTuple(
                         self.acme_client.retry_after(response, default=self._setting('authorization_delay')),
-                        authorization_resource))
+                        domain_name, authorization_resource))
             else:
                 self._error('Unexpected status "', authorization_resource.body.status, '"\n')
 
@@ -1709,7 +1759,7 @@ class AcmeManager(object):
         for zone_name in challenge_dns_responses:
             self._debug('Removing DNS _acme-challenges for ', zone_name, '\n')
             for domain_name, challenge in challenge_dns_responses[zone_name].items():
-                self._add_hook('clear_dns_challenge', zone=zone_name, domain=domain_name, challenge=challenge)
+                self._add_hook('clear_dns_challenge', zone=zone_name, domain=domain_name, challenge=challenge.response)
             zone_key = self._zone_key(zone_name)
             if (zone_key):
                 self._remove_dns_challenges(zone_name, zone_key, challenge_dns_responses[zone_name])
@@ -1724,10 +1774,80 @@ class AcmeManager(object):
             os.remove(challenge_http_responses[domain_name])
         self._call_hooks()
 
-        for authorization_resource in failed:
-            self._warn('Authorization failed for ', authorization_resource.body.identifier.value, '\n')
-        for authorization_resource in exhausted:
-            self._warn('Authorization timed out for ', authorization_resource.body.identifier.value, '\n')
+        for domain_name in failed:
+            self._warn('Authorization failed for ', domain_name, '\n')
+        for domain_name in exhausted:
+            self._warn('Authorization timed out for ', domain_name, '\n')
+
+        order.update(authorizations=[authorization_resource for authorization_resource in authorization_resources.values()])
+
+    def _create_auth_order(self, domain_names):
+        if (1 == self.acme_client.acme_version):
+            authorizations = []
+            for domain_name in domain_names:
+                try:
+                    authorizations.append(self.acme_client.client.request_domain_challenges(domain_name))
+                except Exception as error:
+                    self._warn('Unable to request authorization for ', domain_name, '\n', self._indent(error), '\n')
+                    continue
+            if (authorizations):
+                return messages.OrderResource(authorizations=authorizations)
+        else:
+            identifiers = []
+
+            for domain_name in domain_names:
+                identifiers.append(messages.Identifier(typ=messages.IDENTIFIER_FQDN, value=domain_name))
+
+            if (identifiers):
+                order = messages.NewOrder(identifiers=identifiers)
+                try:
+                    response = self.acme_client.client._post(self.acme_client.client.directory['newOrder'], order)
+                except Exception as error:
+                    self._warn('Unable to create authorization order\n', self._indent(error), '\n')
+                    return None
+                body = messages.Order.from_json(response.json())
+                authorizations = []
+                for url in body.authorizations:
+                    try:
+                        authorizations.append(self.acme_client.client._authzr_from_response(self.acme_client.client.net.get(url), uri=url))
+                    except Exception as error:
+                        self._warn('Unable to request authorization for ', domain_name, '\n', self._indent(error), '\n')
+                        continue
+                if (authorizations):
+                    return messages.OrderResource(body=body, uri=response.headers.get('Location'), authorizations=authorizations)
+        return None
+
+    def process_authorizations(self, private_key_names=[]):
+        domain_names = {}
+
+        # gather domain names from all specified certtificates
+        private_keys = self._config('private_keys')
+        for private_key_name in private_keys:
+            if (private_key_names and (private_key_name not in private_key_names)):
+                continue
+            key_certificates = private_keys[private_key_name].get('certificates', {})
+            for certificate_name in key_certificates:
+                for zone_name in key_certificates[certificate_name]['alt_names']:
+                    if (zone_name not in domain_names):
+                        domain_names[zone_name] = []
+                    for domain_name in self._get_domain_names(key_certificates[certificate_name]['alt_names'], zone_name):
+                        if (domain_name not in domain_names[zone_name]):
+                            domain_names[zone_name].append(domain_name)
+
+        # gather domain names from authorizations
+        authorizations = self._config('authorizations')
+        for zone_name in authorizations:
+            if (zone_name not in domain_names):
+                domain_names[zone_name] = []
+            for domain_name in self._get_domain_names(authorizations, zone_name):
+                if (domain_name not in domain_names[zone_name]):
+                    domain_names[zone_name].append(domain_name)
+
+        for zone_name in domain_names:
+            # process each zone in a seperate order to help keep the host name count below the limit
+            order = self._create_auth_order(domain_names[zone_name])
+            if (order):
+                self._handle_authorizations(order, False, domain_names)
 
     def _get_key_options(self, private_key_config):
         key_size = self._option(private_key_config, 'key_size')
@@ -1740,7 +1860,14 @@ class AcmeManager(object):
             key_options['ecdsa'] = (key_curve, )
         return key_options
 
-    def process_certificates(self, private_key_names=[]):
+    def _poll_order(self, order):
+        response = self.acme_client.net.get(order.uri)
+        body = messages.Order.from_json(response.json())
+        if body.error is not None:
+            raise body.error
+        return order.update(body=body), response
+
+    def process_certificates(self, auth_fetch_only, private_key_names=[]):
         private_keys = self._config('private_keys')
         updated_key_zones = set()
         processed_keys = []
@@ -1924,24 +2051,29 @@ class AcmeManager(object):
                                                 continue
                     issue_certificate_key_types.append(key_type)
 
-                if (issue_certificate_key_types):
-                    missing_authorizations = [alt_name for alt_name in alt_names if (alt_name not in self.authorizations)]
-                    if (missing_authorizations):
-                        self._warn('Unable to issue certificate ', certificate_name, ' due to missing authorization(s) for: ',
-                                   ', '.join(missing_authorizations), '\n')
-                        if (rolled_private_key):
-                            issued_certificates = []    # do not partially install new certificates if private key changed
-                            break
-                        continue
+                domain_names = {}
+                for zone_name in key_certificates[certificate_name]['alt_names']:
+                    if (zone_name not in domain_names):
+                        domain_names[zone_name] = []
+                    for domain_name in self._get_domain_names(key_certificates[certificate_name]['alt_names'], zone_name):
+                        if (domain_name not in domain_names[zone_name]):
+                            domain_names[zone_name].append(domain_name)
 
                 for key_type in issue_certificate_key_types:
-                    csr = self.generate_csr(keys[key_type].key, common_name, alt_names,
-                                            self._option(key_certificates[certificate_name], 'ocsp_must_staple'))
+                    csr_pem = self.generate_csr(keys[key_type].key, common_name, alt_names,
+                                                self._option(key_certificates[certificate_name], 'ocsp_must_staple'))
                     self._info('Requesting ', key_type.upper(), ' certificate for ', common_name,
                                (' with alt names: ' + ', '.join(alt_names)) if (alt_names) else '', '\n')
                     try:
-                        certificate_resource = self.acme_client.request_issuance(josepy.ComparableX509(csr),
-                                                                                 [self.authorizations[domain_name] for domain_name in alt_names])
+                        order = self.acme_client.new_order(csr_pem)
+                        self._handle_authorizations(order, auth_fetch_only, domain_names)
+                        if (order.uri):
+                            order, response = self._poll_order(order)
+                            if (messages.STATUS_INVALID == order.body.status):
+                                self._warn('Unable to issue ', key_type.upper(), ' certificate ', certificate_name, '\n')
+                                continue
+                        order = self.acme_client.finalize_order(order, datetime.datetime.now() + datetime.timedelta(seconds=self._setting('cert_poll_time')))
+                        certificate, chain = self.decode_full_chain(order.fullchain_pem)
                     except Exception as error:
                         self._warn(key_type.upper(), ' certificate issuance failed\n', self._indent(error), '\n')
                         if (rolled_private_key):
@@ -1950,8 +2082,7 @@ class AcmeManager(object):
                         continue
 
                     self._debug('New ', key_type.upper(), ' certificate issued\n')
-                    chain = self.acme_client.fetch_chain(certificate_resource)
-                    issued_certificates.append(CertificateData(certificate_name, key_type, certificate_resource.body, chain,
+                    issued_certificates.append(CertificateData(certificate_name, key_type, certificate, chain,
                                                                key_certificates[certificate_name]))
 
             processed_keys.append(PrivateKeyData(private_key_name, key_options, keys, backup_keys, previous_keys,
@@ -2194,7 +2325,7 @@ class AcmeManager(object):
                         if (certificate):
                             certificate_count += 1
                             try:
-                                self.acme_client.revoke(certificate, 0)
+                                self.acme_client.revoke(josepy.ComparableX509(certificate), 0)
                                 revoked_certificates.append((certificate_name, key_type))
                                 self._status(key_type.upper(), ' certificate ', certificate_name, ' revoked\n')
                             except Exception as error:
@@ -2574,6 +2705,8 @@ class AcmeManager(object):
         ssl_context.set_cipher_list(cipher_list)
 
         try:
+            if (host_name.startswith('*.')):
+                host_name = 'wildcard-test.' + host_name[2:]
             addr_info = socket.getaddrinfo(host_name, port_number, proto=socket.IPPROTO_TCP)
         except Exception as error:
             self._warn('ERROR: Unable to get address for ', host_name, '\n', self._indent(error), '\n')
@@ -2594,7 +2727,7 @@ class AcmeManager(object):
 
                 installed_certificate = installed_certificates[0]
                 installed_chain = installed_certificates[1:]
-                if (self._certificates_match(certificate.wrapped, installed_certificate)):
+                if (self._certificates_match(certificate, installed_certificate)):
                     self._info(key_type.upper(), ' certificate ', certificate_name, ' present on ', host_desc, '\n', color='green')
                 else:
                     self._warn('ERROR: ', key_type.upper(), ' certificate "',
@@ -2604,8 +2737,8 @@ class AcmeManager(object):
                                ' intermediate(s), expected ', len(chain), '\n')
                 else:
                     for intermediate, installed_intermediate in zip(chain, installed_chain):
-                        if (self._certificates_match(intermediate.wrapped, installed_intermediate)):
-                            self._info('Intermediate ', key_type.upper(), ' certificate "', intermediate.wrapped.get_subject().commonName,
+                        if (self._certificates_match(intermediate, installed_intermediate)):
+                            self._info('Intermediate ', key_type.upper(), ' certificate "', intermediate.get_subject().commonName,
                                        '" present on ', host_desc, '\n', color='green')
                         else:
                             self._warn('ERROR: Intermediate ', key_type.upper(), ' certificate "', installed_intermediate.get_subject().commonName,
@@ -2745,10 +2878,10 @@ class AcmeManager(object):
                     self._error('Revocation must explicitly specify private key names\n')
                 else:
                     self.revoke_certificates(self.args.private_key_names)
-            if (self.args.auth or self.args.certs):
-                self.process_authorizations(self._setting('follower_mode') or not self.args.auth, self.args.private_key_names)
+            if (self.args.auth and not self._setting('follower_mode')):
+                self.process_authorizations(self.args.private_key_names)
             if (self.args.certs):
-                self.process_certificates(self.args.private_key_names)
+                self.process_certificates(self._setting('follower_mode'), self.args.private_key_names)
             if (self.args.tlsa):
                 self.update_tlsa_records(self.args.private_key_names)
             if (self.args.sct):

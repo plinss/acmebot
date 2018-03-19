@@ -27,11 +27,12 @@
         "dns_lookup_delay": 10,
         "max_authorization_attempts": 30,
         "authorization_delay": 10,
+        "cert_poll_time": 30,
         "max_ocsp_verify_attempts": 10,
         "ocsp_verify_retry_delay": 5,
         "min_run_delay": 300,
         "max_run_delay": 3600,
-        "acme_directory_url": "https://acme-v01.api.letsencrypt.org/directory",
+        "acme_directory_url": "https://acme-v02.api.letsencrypt.org/directory",
         "reload_zone_command": "/etc/bind/reload-zone.sh",
         "nsupdate_command": "/usr/bin/nsupdate"
     },

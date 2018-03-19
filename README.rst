@@ -135,6 +135,13 @@ This tool can automatically connect to configured servers and verify that the ge
 Additional checks are made for OSCP staples and optionally HPKP headers can be verified as well.
 
 
+ACME Protocol V1 and V2 Support
+-------------------------------
+
+This tool supports services running both ACME V1 and ACME V2 APIs.
+Wildcard certrificates may be issued when using the V2 API.
+
+
 Installation
 ============
 
@@ -176,6 +183,17 @@ and may not necessarily be of the same type,
 e.g. Let's Encrypt currently signs ECDSA certificates with an RSA root.
 If your certificate authority uses RSA certificate to sign ECDSA certificates types, place that RSA root certificate in ``root_cert.ecdsa.pem``.
 The root certificate for Let's Encrypt can be obtained `here <https://letsencrypt.org/certificates/>`_.
+
+
+Upgrade
+=======
+
+Starting with version 2.0.0 of this tool, the Let's Encrypt ACME V2 API is used by default.
+When upgrading to version 2.0.0+, or otherwise changing API endpoints,
+the client key is regenerated and a new registration is performed.
+If running in master/follower mode, be sure to run the tool on the master first,
+then copy the new client key and registration files to the followers before running on the followers.
+Existing private keys and certificates may continue to be used.
 
 
 Quick Start
@@ -564,6 +582,8 @@ All of these need only be present when the desired value is different from the d
   The default value is ``30``.
 * ``authorization_delay`` specifies the number of seconds to wait between authorization checks.
   The default value is ``10``.
+* ``cert_poll_time`` specifies the number of seconds to wait for a certificate to be issued.
+  The default value is ``30``.
 * ``max_ocsp_verify_attempts`` specifies the number of times to check for OCSP staples during verification.
   Retries will only happen when the certificate has the OCSP Must-Staple extension.
   The default value is ``10``.
@@ -574,7 +594,7 @@ All of these need only be present when the desired value is different from the d
 * ``max_run_delay`` specifies the maximum number of seconds to wait if the ``--randomwait`` command line option is present.
   The default value is ``3600``.
 * ``acme_directory_url`` specifies the primary URL for the ACME service.
-  The default value is ``"https://acme-v01.api.letsencrypt.org/directory"``, the Let's Encrypt production API.
+  The default value is ``"https://acme-v02.api.letsencrypt.org/directory"``, the Let's Encrypt production API.
   You can substitute the URL for Let's Encrypt's staging environment or another certificate authority.
 * ``reload_zone_command`` specifies the command to execute to reload local DNS zone information.
   When using `bindtool`_ the ``"reload-zone.sh"`` script provides this service.
@@ -614,7 +634,7 @@ Example::
             "authorization_delay": 10,
             "min_run_delay": 300,
             "max_run_delay": 3600,
-            "acme_directory_url": "https://acme-v01.api.letsencrypt.org/directory",
+            "acme_directory_url": "https://acme-v02.api.letsencrypt.org/directory",
             "reload_zone_command": "/etc/bind/reload-zone.sh",
             "nsupdate_command": "/usr/bin/nsupdate",
             "verify": [443]
@@ -1386,6 +1406,18 @@ Which should result in the following DNS record created in the zone::
 
     _acme-challenge.www.example.com. 300 IN TXT "gfj9Xq...Rg85nM"
 
+Note that domain names containing wildcards must have the wildcard component removed in the corresponding TXT record, e.g.::
+
+    {
+        "example.com": "jc87sd...kO89hG"
+        "*.example.com": "gfj9Xq...Rg85nM"
+    }
+
+Must result in the following DNS records created in the zone::
+
+    _acme-challenge.example.com. 300 IN TXT "jc87sd...kO89hG"
+    _acme-challenge.example.com. 300 IN TXT "gfj9Xq...Rg85nM"
+
 If there is no file in the ``challenge`` directory with the same name as the zone, all _acme-challenge records should be removed.
 
 Any time the ``reload_zone`` is called, it should also update any TLSA records asscoiated with the zone based on the certificates or private keys present.
@@ -1606,7 +1638,7 @@ any revoked certificates that are still configured will automatically perform a 
 Authorization Only
 ------------------
 
-Use of the ``--auth`` option on the command line will limit the tool to only performing domain autorizations.
+Use of the ``--auth`` option on the command line will limit the tool to only performing domain authorizations.
 
 
 Certificates Only
