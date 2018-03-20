@@ -1502,7 +1502,10 @@ class AcmeManager(object):
                                 verify['protocol'] = None
                             if ('hosts' in verify):
                                 for host_name in self._get_list(verify, 'hosts'):
-                                    if (host_name not in alt_names):
+                                    for alt_name in alt_names:
+                                        if ((host_name == alt_name) or (alt_name.startswith('*.') and (host_name.split('.', 1)[1] == alt_name[2:]))):
+                                            break
+                                    else:
                                         self._error('Verify host ', host_name, ' not specified in certificate ', certificate_name, '\n')
                         verify_list.append(verify)
                     private_keys[private_key_name]['certificates'][certificate_name]['verify'] = verify_list
@@ -1570,7 +1573,7 @@ class AcmeManager(object):
                     answer = input('Accept? (Y/n) ')
                     if (answer and not answer.lower().startswith('y')):
                         self._archive_file('client', client_key_path)
-                        self._error('Terms of service rejected.\n')
+                        raise Exception('Terms of service rejected.\n')
                     self._detail('Terms of service accepted.\n')
                 else:
                     self._detail('Auto-accepting TOS: ', tos, '\n')
