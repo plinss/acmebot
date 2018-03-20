@@ -152,7 +152,7 @@ class AcmeManager(object):
     def __init__(self):
         self.script_dir = os.path.dirname(os.path.realpath(__file__))
         self.script_name = os.path.basename(__file__)
-        self.script_version = '2.0.0'
+        self.script_version = '2.0.1'
 
         self._color_codes = {
             'black': 30,
@@ -1396,6 +1396,13 @@ class AcmeManager(object):
     def _clear_hooks(self):
         self.hooks.clear()
 
+    def _host_in_list(self, host_name, haystack_host_names):
+        for haystack_host_name in haystack_host_names:
+            if ((host_name == haystack_host_name)
+                    or (haystack_host_name.startswith('*.') and ('.' in host_name) and (host_name.split('.', 1)[1] == haystack_host_name[2:]))):
+                return haystack_host_name
+        return None
+
     def _validate_config(self):
         if ('settings' in self.config):     # backward compat with changed config options
             if (('slave_mode' in self.config['settings']) and ('follower_mode' not in self.config['settings'])):
@@ -1474,38 +1481,38 @@ class AcmeManager(object):
                 elif ('@' in key_certificates[certificate_name]['alt_names']):
                     key_certificates[certificate_name]['alt_names'][common_name] = key_certificates[certificate_name]['alt_names']['@']
                     del key_certificates[certificate_name]['alt_names']['@']
-                for zone_name in key_certificates[certificate_name].get('alt_names', {}):
-                    if (common_name in self._get_domain_names(key_certificates[certificate_name]['alt_names'], zone_name)):
-                        break
-                else:
-                    self._error('Certificate common name "', common_name, '" not listed in alt_names\n')
+                alt_names = []
+                for zone_name in key_certificates[certificate_name]['alt_names']:
+                    alt_names += self._get_domain_names(key_certificates[certificate_name]['alt_names'], zone_name)
+                if (common_name not in alt_names):
+                    self._error('Certificate common name "', common_name, '" not listed in alt_names in certificate ', certificate_name, '\n')
+                overlap_hosts = alt_names
+                for host_name in alt_names:
+                    overlap_hosts = overlap_hosts[1:]
+                    overlap_host_name = self._host_in_list(host_name, overlap_hosts)
+                    if (overlap_host_name):
+                        self._error('alt_name ', host_name, ' conflicts with ', overlap_host_name, ' in certificate ', certificate_name, '\n')
                 certificate_key_types |= set(self._get_list(key_certificates[certificate_name], 'key_types', self._key_types))
                 if ('verify' in key_certificates[certificate_name]):
-                    alt_names = []
-                    for zone_name in key_certificates[certificate_name]['alt_names']:
-                        alt_names += self._get_domain_names(key_certificates[certificate_name]['alt_names'], zone_name)
                     verify_list = []
                     for verify in self._get_list(key_certificates[certificate_name], 'verify'):
                         if (isinstance(verify, int)):
                             verify = {'port': verify, 'starttls': None, 'protocol': None}
                         elif (isinstance(verify, dict)):
                             if ('port' not in verify):
-                                self._error('verify missing port definition')
+                                self._error('verify missing port definition in certificate ', certificate_name, '\n')
                             if (isinstance(verify['port'], str)):
                                 try:
                                     verify['port'] = int(verify['port'])
                                 except:
-                                    self._error('Invalid port definition ', verify['port'])
+                                    self._error('Invalid port definition ', verify['port'], ' in certificate ', certificate_name, '\n')
                             if ('starttls' not in verify):
                                 verify['starttls'] = None
                             if ('protocol' not in verify):
                                 verify['protocol'] = None
                             if ('hosts' in verify):
                                 for host_name in self._get_list(verify, 'hosts'):
-                                    for alt_name in alt_names:
-                                        if ((host_name == alt_name) or (alt_name.startswith('*.') and (host_name.split('.', 1)[1] == alt_name[2:]))):
-                                            break
-                                    else:
+                                    if (not self._host_in_list(host_name, alt_names)):
                                         self._error('Verify host ', host_name, ' not specified in certificate ', certificate_name, '\n')
                         verify_list.append(verify)
                     private_keys[private_key_name]['certificates'][certificate_name]['verify'] = verify_list
