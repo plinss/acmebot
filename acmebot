@@ -282,6 +282,7 @@ class AcmeManager(object):
                 'auto_rollover': False,
                 'max_dns_lookup_attempts': 30,
                 'dns_lookup_delay': 10,
+                'max_domains_per_order': 100,
                 'max_authorization_attempts': 30,
                 'authorization_delay': 10,
                 'cert_poll_time': 30,
@@ -1399,7 +1400,8 @@ class AcmeManager(object):
     def _host_in_list(self, host_name, haystack_host_names):
         for haystack_host_name in haystack_host_names:
             if ((host_name == haystack_host_name)
-                    or (haystack_host_name.startswith('*.') and ('.' in host_name) and (host_name.split('.', 1)[1] == haystack_host_name[2:]))):
+                    or (haystack_host_name.startswith('*.') and ('.' in host_name) and (host_name.split('.', 1)[1] == haystack_host_name[2:]))
+                    or (host_name.startswith('*.') and ('.' in haystack_host_name) and (haystack_host_name.split('.', 1)[1] == host_name[2:]))):
                 return haystack_host_name
         return None
 
@@ -1526,16 +1528,11 @@ class AcmeManager(object):
 
     def _generate_client_key(self, client_key_path):
         self.client_key = josepy.JWKRSA(key=rsa.generate_private_key(public_exponent=65537, key_size=4096, backend=default_backend()))
-        try:
-            with self._open_file(client_key_path, 'w', 0o600) as client_key_file:
-                json.dump(self.client_key.fields_to_partial_json(), client_key_file)
-                self._detail('Saved client key ', client_key_path, '\n')
-        except Exception:
-            self._error('Unable to save client key to ', client_key_path, '\n')
 
     def connect_client(self):
         resource_dir = os.path.join(self.script_dir, self._directory('resource'))
         self._makedir(resource_dir, 0o600)
+        generated_client_key = False
         client_key_path = os.path.join(resource_dir, 'client_key.json')
         if (os.path.isfile(client_key_path)):
             with open(client_key_path) as client_key_file:
@@ -1544,6 +1541,7 @@ class AcmeManager(object):
         else:
             self._status('Client key not present, generating\n')
             self._generate_client_key(client_key_path)
+            generated_client_key = True
 
         registration = None
         registration_path = os.path.join(resource_dir, 'registration.json')
@@ -1557,8 +1555,8 @@ class AcmeManager(object):
                     self._status('ACME service URL has changed, re-registering with new client key\n')
                     registration = None
                     # ACME-ISSUE Resetting the client key should not be necessary, but the new registration comes back empty if we use the old key
-                    self._archive_file('client', client_key_path)
                     self._generate_client_key(client_key_path)
+                    generated_client_key = True
 
         if (registration):
             try:
@@ -1579,7 +1577,6 @@ class AcmeManager(object):
                     self._status('ACME service has the following terms of service:\n', tos, '\n')
                     answer = input('Accept? (Y/n) ')
                     if (answer and not answer.lower().startswith('y')):
-                        self._archive_file('client', client_key_path)
                         raise Exception('Terms of service rejected.\n')
                     self._detail('Terms of service accepted.\n')
                 else:
@@ -1591,11 +1588,19 @@ class AcmeManager(object):
             except Exception as error:
                 self._error("Can't register with ACME service.\n", error, '\n')
 
-            with FileTransaction('registration', registration_path, chmod=0o600) as transaction:
-                transaction.write(registration.json_dumps())
+            transactions = []
+            if (generated_client_key):
+                with FileTransaction('client', client_key_path, chmod=0o600) as client_key_transaction:
+                    client_key_transaction.write(json.dumps(self.client_key.fields_to_partial_json()))
+                    self._detail('Saved client key ', client_key_path, '\n')
+                    transactions.append(client_key_transaction)
+
+            with FileTransaction('registration', registration_path, chmod=0o600) as registration_transaction:
+                registration_transaction.write(registration.json_dumps())
                 self._detail('Saved registration ', registration_path, '\n')
+                transactions.append(registration_transaction)
             try:
-                self._commit_file_transactions([transaction], archive_name=None)
+                self._commit_file_transactions(transactions, archive_name='client')
             except Exception:
                 self._error('Unable to save registration to ', registration_path, '\n')
 
@@ -1853,9 +1858,19 @@ class AcmeManager(object):
                 if (domain_name not in domain_names[zone_name]):
                     domain_names[zone_name].append(domain_name)
 
+        authorization_groups = []
         for zone_name in domain_names:
-            # process each zone in a seperate order to help keep the host name count below the limit
-            order = self._create_auth_order(domain_names[zone_name])
+            for host_name in domain_names[zone_name]:
+                for authorization_host_names in authorization_groups:
+                    if ((len(authorization_host_names) < self._setting('max_domains_per_order'))
+                            and not self._host_in_list(host_name, authorization_host_names)):
+                        authorization_host_names.append(host_name)
+                        break
+                else:
+                    authorization_groups.append([host_name])
+
+        for authorization_host_names in authorization_groups:
+            order = self._create_auth_order(authorization_host_names)
             if (order):
                 self._handle_authorizations(order, False, domain_names)
 

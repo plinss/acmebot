@@ -25,6 +25,7 @@
         "auto_rollover": false,
         "max_dns_lookup_attempts": 60,
         "dns_lookup_delay": 10,
+        "max_domains_per_order": 100,
         "max_authorization_attempts": 30,
         "authorization_delay": 10,
         "cert_poll_time": 30,

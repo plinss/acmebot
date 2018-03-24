@@ -578,6 +578,8 @@ All of these need only be present when the desired value is different from the d
   The default value is ``60``.
 * ``dns_lookup_delay`` specifies the number of seconds to wait between DNS lookups.
   The default value is ``10``.
+* ``max_domains_per_order`` specifies the maximum number of domains allowed per authorization order.
+  The default value is ``100``, which is the limit set by Let's Encrypt.
 * ``max_authorization_attempts`` specifies the number of times to check for completed authorizations.
   The default value is ``30``.
 * ``authorization_delay`` specifies the number of seconds to wait between authorization checks.
