@@ -1833,7 +1833,7 @@ class AcmeManager(object):
         return None
 
     def process_authorizations(self, private_key_names=[]):
-        domain_names = {}
+        domain_names = collections.OrderedDict()
 
         # gather domain names from all specified certtificates
         private_keys = self._config('private_keys')
@@ -2076,7 +2076,7 @@ class AcmeManager(object):
                                                 continue
                     issue_certificate_key_types.append(key_type)
 
-                domain_names = {}
+                domain_names = collections.OrderedDict()
                 for zone_name in key_certificates[certificate_name]['alt_names']:
                     if (zone_name not in domain_names):
                         domain_names[zone_name] = []
@@ -2228,7 +2228,7 @@ class AcmeManager(object):
                 certificate_params[certificate_name] = (dhparam_pem, ecparam_pem, generated_params)
 
             # save issued certificates
-            saved_certificates = {}
+            saved_certificates = collections.OrderedDict()
             for certificate_data in private_key_data.issued_certificates:
                 certificate_name = certificate_data.certificate_name
                 dhparam_pem, ecparam_pem, generated_params = certificate_params[certificate_name]
