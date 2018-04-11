@@ -40,6 +40,7 @@ def verify_requirements():
             print('Run "pip3 install -r {path}" to complete installation'.format(path=requirements_file_path))
             exit()
 
+
 verify_requirements()
 
 
@@ -584,7 +585,8 @@ class AcmeManager(object):
         return self._get_list(self.config.get('settings', {}), key)
 
     def _directory(self, file_type):
-        return self._config('directories', file_type, '')
+        directory = self._config('directories', file_type, '')
+        return os.path.normpath(os.path.join(os.path.dirname(self.config_file_path), directory)) if (directory) else directory
 
     def _key_type_suffix(self, key_type):
         return self._config('key_type_suffixes', key_type, '')
@@ -1442,7 +1444,7 @@ class AcmeManager(object):
                     if (isinstance(verify['port'], str)):
                         try:
                             verify['port'] = int(verify['port'])
-                        except:
+                        except Exception:
                             self._error('Invalid port definition ', verify['port'])
                     if ('starttls' not in verify):
                         verify['starttls'] = None
@@ -1506,7 +1508,7 @@ class AcmeManager(object):
                             if (isinstance(verify['port'], str)):
                                 try:
                                     verify['port'] = int(verify['port'])
-                                except:
+                                except Exception:
                                     self._error('Invalid port definition ', verify['port'], ' in certificate ', certificate_name, '\n')
                             if ('starttls' not in verify):
                                 verify['starttls'] = None
