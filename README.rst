@@ -649,6 +649,7 @@ Directories
 -----------
 
 Directories used to store the input and output files of the tool.
+Relative paths will be considered relative to the directory of configuration file.
 All of these need only be present when the desired value is different from the default.
 
 * ``pid`` specifies the directory to store a process ID file.
@@ -1262,7 +1263,7 @@ Example::
         "ct_logs": {
             "google_pilot": {
                 "url": "https://ct.googleapis.com/pilot",
-                "id": "pLkJkLQYWBSHuxOizGdwCjw1mAT5G9+443fNDsgN3BA=
+                "id": "pLkJkLQYWBSHuxOizGdwCjw1mAT5G9+443fNDsgN3BA="
             },
             "google_icarus": {
                 "url": "https://ct.googleapis.com/icarus",
