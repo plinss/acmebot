@@ -2782,15 +2782,17 @@ class AcmeManager(object):
 
                 if (protocol_info):
                     if ('public_key_pins' in protocol_info):
-                        for key_type, key_name, key_purpose, key in keys:
-                            digests = {'sha256': self._public_key_digest(key, 'sha256'), 'sha512': self._public_key_digest(key, 'sha512')}
+                        for pin_key_type, pin_key_name, pin_key_purpose, pin_key in keys:
+                            digests = {'sha256': self._public_key_digest(pin_key, 'sha256'), 'sha512': self._public_key_digest(pin_key, 'sha512')}
                             for pin in protocol_info['public_key_pins']:
                                 if (digests[pin[0]] == pin[1]):
-                                    self._info('Public key pin found for ', key_type.upper(), ' ', key_purpose, ' key ', key_name, ' on ', host_desc, '\n',
+                                    self._info('Public key pin found for ', pin_key_type.upper(), ' ', pin_key_purpose, ' key ', pin_key_name,
+                                               ' on ', host_desc, '\n',
                                                color='green')
                                     break
                             else:
-                                self._warn('ERROR: Public key pin missing for ', key_type.upper(), ' ', key_purpose, ' key ', key_name, ' on ', host_desc, '\n')
+                                self._warn('ERROR: Public key pin missing for ', pin_key_type.upper(), ' ', pin_key_purpose, ' key ', pin_key_name,
+                                           ' on ', host_desc, '\n')
                     else:
                         self._warn('ERROR: Public key pins not found on ', host_desc, '\n')
 
