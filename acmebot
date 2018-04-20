@@ -1910,7 +1910,7 @@ class AcmeManager(object):
                 self._warn('No configured private key types for ', private_key_name, '\n')
                 continue
 
-            hpkp_days = self._option(private_keys[private_key_name], 'hpkp_days')
+            hpkp_days = self._option(private_keys[private_key_name], 'hpkp_days') or 0
             expiration_days = self._option(private_keys[private_key_name], 'expiration_days')
 
             rolled_private_key = False
@@ -2168,7 +2168,7 @@ class AcmeManager(object):
 
             # verify and generate hpkp headers
             generated_hpkp_headers = False
-            hpkp_days = self._option(private_keys[private_key_name], 'hpkp_days')
+            hpkp_days = self._option(private_keys[private_key_name], 'hpkp_days') or 0
             if (0 < hpkp_days) and (self._directory('hpkp')):
                 pin_subdomains = self._option(private_keys[private_key_name], 'pin_subdomains')
                 hpkp_report_uri = self._option(private_keys[private_key_name], 'hpkp_report_uri')
