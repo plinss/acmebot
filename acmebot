@@ -153,7 +153,7 @@ class AcmeManager(object):
     def __init__(self):
         self.script_dir = os.path.dirname(os.path.realpath(__file__))
         self.script_name = os.path.basename(__file__)
-        self.script_version = '2.1.0'
+        self.script_version = '2.1.1'
 
         self._color_codes = {
             'black': 30,
@@ -584,6 +584,12 @@ class AcmeManager(object):
     def _setting_list(self, key):
         return self._get_list(self.config.get('settings', {}), key)
 
+    def _setting_int(self, key):
+        try:
+            return int(self._setting(key))
+        except Exception:
+            return 0
+
     def _directory(self, file_type):
         directory = self._config('directories', file_type, '')
         return os.path.normpath(os.path.join(os.path.dirname(self.config_file_path), directory)) if (directory) else directory
@@ -629,6 +635,12 @@ class AcmeManager(object):
     def _option_list(self, config, key):
         value = config.get(key, self._setting(key))
         return value if (isinstance(value, collections.Iterable) and not isinstance(value, str)) else [] if (value is None) else [value]
+
+    def _option_int(self, config, key):
+        try:
+            return int(self._option(config, key))
+        except Exception:
+            return 0
 
     def _datetime_from_asn1_generaltime(self, general_time):
         try:
@@ -1707,8 +1719,8 @@ class AcmeManager(object):
                 self._debug('Challenge present for ', domain_name, ' at ', name_server, '\n')
             else:
                 self._detail('Challenge missing for ', domain_name, ' at ', name_server, '\n')
-                if (attempt_count < self._setting('max_dns_lookup_attempts')):
-                    heapq.heappush(waiting, DNSTuple(datetime.datetime.now() + datetime.timedelta(seconds=self._setting('dns_lookup_delay')),
+                if (attempt_count < self._setting_int('max_dns_lookup_attempts')):
+                    heapq.heappush(waiting, DNSTuple(datetime.datetime.now() + datetime.timedelta(seconds=self._setting_int('dns_lookup_delay')),
                                                      name_server, domain_name, identifier, response, attempt_count + 1))
                 else:
                     self._warn('Maximum attempts reached waiting for DNS challenge ', domain_name, ' at ', name_server, '\n')
@@ -1744,7 +1756,7 @@ class AcmeManager(object):
                 if (200 != response.status_code):
                     self._warn(response, ' while waiting for domain challenge for ', domain_name, '\n')
                     heapq.heappush(waiting, AuthorizationTuple(
-                        self.acme_client.retry_after(response, default=self._setting('authorization_delay')),
+                        self.acme_client.retry_after(response, default=self._setting_int('authorization_delay')),
                         domain_name, authorization_resource))
                     continue
             except Exception as error:
@@ -1761,13 +1773,13 @@ class AcmeManager(object):
                 self._debug('Invalid authorization: ', error.detail if (error) else 'Unknown error', '\n')
                 failed[domain_name] = authorization_resource
             elif (messages.STATUS_PENDING == authorization_resource.body.status):
-                if (self._setting('max_authorization_attempts') < attempts[authorization_resource]):
+                if (self._setting_int('max_authorization_attempts') < attempts[authorization_resource]):
                     exhausted[domain_name] = authorization_resource
                     self._detail('Giving up\n')
                 else:
                     self._detail('Retrying\n')
                     heapq.heappush(waiting, AuthorizationTuple(
-                        self.acme_client.retry_after(response, default=self._setting('authorization_delay')),
+                        self.acme_client.retry_after(response, default=self._setting_int('authorization_delay')),
                         domain_name, authorization_resource))
             else:
                 self._error('Unexpected status "', authorization_resource.body.status, '"\n')
@@ -1864,7 +1876,7 @@ class AcmeManager(object):
         for zone_name in domain_names:
             for host_name in domain_names[zone_name]:
                 for authorization_host_names in authorization_groups:
-                    if ((len(authorization_host_names) < self._setting('max_domains_per_order'))
+                    if ((len(authorization_host_names) < self._setting_int('max_domains_per_order'))
                             and not self._host_in_list(host_name, authorization_host_names)):
                         authorization_host_names.append(host_name)
                         break
@@ -1877,7 +1889,7 @@ class AcmeManager(object):
                 self._handle_authorizations(order, False, domain_names)
 
     def _get_key_options(self, private_key_config):
-        key_size = self._option(private_key_config, 'key_size')
+        key_size = self._option_int(private_key_config, 'key_size')
         key_curve = self._option(private_key_config, 'key_curve')
         key_types = self._get_list(private_key_config, 'key_types', self._key_types)
         key_options = collections.OrderedDict()
@@ -1910,8 +1922,8 @@ class AcmeManager(object):
                 self._warn('No configured private key types for ', private_key_name, '\n')
                 continue
 
-            hpkp_days = self._option(private_keys[private_key_name], 'hpkp_days') or 0
-            expiration_days = self._option(private_keys[private_key_name], 'expiration_days')
+            hpkp_days = self._option_int(private_keys[private_key_name], 'hpkp_days')
+            expiration_days = self._option_int(private_keys[private_key_name], 'expiration_days')
 
             rolled_private_key = False
             generated_private_key = False
@@ -2066,13 +2078,13 @@ class AcmeManager(object):
                                                               - datetime.datetime.utcnow())
                                             if (valid_duration.days < 0):
                                                 self._info(key_type.upper(), ' certificate ', certificate_name, ' has expired\n')
-                                            elif (valid_duration.days < self._setting('renewal_days')):
+                                            elif (valid_duration.days < self._setting_int('renewal_days')):
                                                 self._info(key_type.upper(), ' certificate ', certificate_name, ' will expire in ',
                                                            (str(valid_duration.days) + ' days') if (valid_duration.days) else 'less than a day',
                                                            '\n')
                                             else:
                                                 self._debug(key_type.upper(), ' certificate ', certificate_name, ' valid beyond renewal window\n')
-                                                days_to_renew = valid_duration.days - self._setting('renewal_days')
+                                                days_to_renew = valid_duration.days - self._setting_int('renewal_days')
                                                 self._detail(key_type.upper(), ' certificate due for renewal in ',
                                                              days_to_renew, ' day' if (1 == days_to_renew) else ' days', '\n')
                                                 continue
@@ -2099,7 +2111,8 @@ class AcmeManager(object):
                             if (messages.STATUS_INVALID == order.body.status):
                                 self._warn('Unable to issue ', key_type.upper(), ' certificate ', certificate_name, '\n')
                                 continue
-                        order = self.acme_client.finalize_order(order, datetime.datetime.now() + datetime.timedelta(seconds=self._setting('cert_poll_time')))
+                        order = self.acme_client.finalize_order(order,
+                                                                datetime.datetime.now() + datetime.timedelta(seconds=self._setting_int('cert_poll_time')))
                         certificate, chain = self.decode_full_chain(order.fullchain_pem)
                     except Exception as error:
                         self._warn(key_type.upper(), ' certificate issuance failed\n', self._indent(error), '\n')
@@ -2168,7 +2181,7 @@ class AcmeManager(object):
 
             # verify and generate hpkp headers
             generated_hpkp_headers = False
-            hpkp_days = self._option(private_keys[private_key_name], 'hpkp_days') or 0
+            hpkp_days = self._option_int(private_keys[private_key_name], 'hpkp_days')
             if (0 < hpkp_days) and (self._directory('hpkp')):
                 pin_subdomains = self._option(private_keys[private_key_name], 'pin_subdomains')
                 hpkp_report_uri = self._option(private_keys[private_key_name], 'hpkp_report_uri')
@@ -2196,7 +2209,7 @@ class AcmeManager(object):
                 hold_dhparam_pem = dhparam_pem
                 hold_ecparam_pem = ecparam_pem
 
-                dhparam_size = self._option(key_certificates[certificate_name], 'dhparam_size')
+                dhparam_size = self._option_int(key_certificates[certificate_name], 'dhparam_size')
                 if (dhparam_pem and dhparam_size and (dhparam_size != self.dhparam_size(dhparam_pem))):
                     self._info('Diffie-Hellman parameters for ', certificate_name, ' are not ', dhparam_size, ' bits\n')
                     dhparam_pem = None
@@ -2746,8 +2759,8 @@ class AcmeManager(object):
                 installed_certificates, ocsp_staple, protocol_info = self._fetch_tls_info(addr, ssl_context, key_type, host_name, starttls, protocol)
                 if (self.has_oscp_must_staple(certificate)):
                     attempts = 1
-                    while ((not ocsp_staple) and (attempts < self._setting('max_ocsp_verify_attempts'))):
-                        time.sleep(self._setting('ocsp_verify_retry_delay'))
+                    while ((not ocsp_staple) and (attempts < self._setting_int('max_ocsp_verify_attempts'))):
+                        time.sleep(self._setting_int('ocsp_verify_retry_delay'))
                         self._detail('Retrying to fetch OCSP staple\n')
                         installed_certificates, ocsp_staple, protocol_info = self._fetch_tls_info(addr, ssl_context, key_type, host_name, starttls, protocol)
                         attempts += 1
@@ -2869,8 +2882,8 @@ class AcmeManager(object):
         self._log('\n', self.script_name, ' executed at ', str(datetime.datetime.now()), '\n')
         pid_file_path = os.path.join(self._directory('pid'), self.script_name + '.pid')
         if (self.args.random_wait):
-            delay_seconds = min(random.randrange(min(self._setting('min_run_delay'), self._setting('max_run_delay')),
-                                                 max(self._setting('min_run_delay'), self._setting('max_run_delay'))), 86400)
+            delay_seconds = min(random.randrange(min(self._setting_int('min_run_delay'), self._setting_int('max_run_delay')),
+                                                 max(self._setting_int('min_run_delay'), self._setting_int('max_run_delay'))), 86400)
 
             def _plural(duration, unit):
                 if (0 < duration):
