@@ -243,6 +243,9 @@ class AcmeManager(object):
         argparser.add_argument('-V', '--verify',
                                action='store_true', dest='verify', default=False,
                                help='Verify certificate installation only')
+        argparser.add_argument('--export-client',
+                               action='store_true', dest='export_client', default=False,
+                               help='Export client key')
         argparser.add_argument('-p', '--pass', nargs=1, default=False,
                                action='store', dest='passphrase', metavar='PASSPHRASE',
                                help='Passphrase for private keys')
@@ -1542,6 +1545,16 @@ class AcmeManager(object):
 
     def _generate_client_key(self, client_key_path):
         self.client_key = josepy.JWKRSA(key=rsa.generate_private_key(public_exponent=65537, key_size=4096, backend=default_backend()))
+
+    def export_client_key(self):
+        client_key_pem = self.client_key.key.private_bytes(encoding=Encoding.PEM, format=PrivateFormat.TraditionalOpenSSL, encryption_algorithm=NoEncryption())
+        client_key_file_path = 'acmebot_client_key.pem'
+        try:
+            with open(client_key_file_path, 'w') as client_key_file:
+                client_key_file.write(client_key_pem.decode('ascii'))
+                self._status('Client key exported to ', client_key_file_path, '\n')
+        except Exception as error:
+            self._error('Unbale to write client key to ', client_key_file_path, '\n', error, '\n')
 
     def connect_client(self):
         resource_dir = os.path.join(self.script_dir, self._directory('resource'))
@@ -2913,7 +2926,8 @@ class AcmeManager(object):
         with self._open_file(pid_file_path, 'w') as pid_file:
             pid_file.write(str(os.getpid()))
         try:
-            if (not (self.args.revoke or self.args.auth or self.args.certs or self.args.tlsa or self.args.sct or self.args.ocsp or self.args.verify)):
+            if (not (self.args.revoke or self.args.auth or self.args.certs or self.args.tlsa or self.args.sct or self.args.ocsp or self.args.verify
+                     or self.args.export_client)):
                 self.args.auth = True
                 self.args.certs = True
                 self.args.tlsa = True
@@ -2921,7 +2935,7 @@ class AcmeManager(object):
                 self.args.ocsp = True
                 self.args.verify = True
 
-            if (self.args.revoke or self.args.auth or self.args.certs):
+            if (self.args.revoke or self.args.auth or self.args.certs or self.args.export_client):
                 self.connect_client()
 
             if (self.args.revoke):
@@ -2943,6 +2957,8 @@ class AcmeManager(object):
                 time.sleep(5)   # allow time for services to reload before verification
             if (self.args.verify):
                 self.verify_certificate_installation(self.args.private_key_names)
+            if (self.args.export_client):
+                self.export_client_key()
             self.disconnect_client()
         finally:
             os.remove(pid_file_path)
