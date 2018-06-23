@@ -2886,7 +2886,7 @@ class AcmeManager(object):
                                 if (key_type not in self._get_list(verify, 'key_types')):
                                     continue
                             for host_name in self._get_list(verify, 'hosts', alt_names):
-                                if (host_name in alt_names):
+                                if (self._host_in_list(host_name, alt_names)):
                                     self._verify_certificate_installation(certificate_name, certificate, chain, key_type,
                                                                           host_name, verify['port'], verify['starttls'], key_type_ciphers[key_type],
                                                                           verify['protocol'], keys)
