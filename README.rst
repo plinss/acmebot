@@ -17,7 +17,7 @@ This tool is not intended as a replacement for Certbot and does not attempt to r
 notably it does not modify configuration files of other services,
 or provide a server to perform stand-alone domain validation.
 It does however, do a few things that Certbot does not,
-simplifying certificate manangement in more advanced environments.
+simplifying certificate management in more advanced environments.
 In addition to automatically issuing and maintaining certificates,
 the tool can also maintain associated HPKP headers and TLSA (DANE) records.
 
