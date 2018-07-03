@@ -2059,48 +2059,58 @@ class AcmeManager(object):
                     if ((not rolled_private_key) and (not self.args.renew)):
                         existing_certificate = self.load_certificate('certificate', certificate_name, key_type)
                         if (existing_certificate):
+                            replace_certificate = False
+
                             certificate_common_name = existing_certificate.get_subject().commonName
                             if (common_name != certificate_common_name):
                                 self._info('Common name changed for ', key_type.upper(), ' certificate ', certificate_name, ' from ', certificate_common_name,
                                            ' to ', common_name, '\n')
+                                replace_certificate = True
+
+                            certificate_alt_names = self.get_alt_names(existing_certificate)
+                            new_alt_names = set(alt_names)
+                            existing_alt_names = set(certificate_alt_names)
+                            if (new_alt_names != existing_alt_names):
+                                added_alt_names = new_alt_names - existing_alt_names
+                                removed_alt_names = existing_alt_names - new_alt_names
+                                added = ', '.join([alt_name for alt_name in alt_names if (alt_name in added_alt_names)])
+                                removed = ', '.join([alt_name for alt_name in certificate_alt_names if (alt_name in removed_alt_names)])
+                                self._info('Alt names changed for ', key_type.upper(), ' certificate ', certificate_name,
+                                           (', adding ' + added) if added else '',
+                                           (', removing ' + removed) if removed else '',
+                                           '\n')
+                                replace_certificate = True
+
+                            if (not self._private_key_matches_certificate(keys[key_type].key, existing_certificate)):
+                                self._info(key_type.upper(), ' certificate ', certificate_name, ' public key does not match private key\n')
+                                changed_private_key = True
+                                replace_certificate = True
+
+                            cert_has_must_staple = self.has_oscp_must_staple(existing_certificate)
+                            if (cert_has_must_staple != self._option(key_certificates[certificate_name], 'ocsp_must_staple')):
+                                self._info(key_type.upper(), ' certificate ', certificate_name,
+                                           ' has' if (cert_has_must_staple) else ' does not have',
+                                           ' ocsp_must_staple option\n')
+                                replace_certificate = True
+
+                            valid_duration = (self._datetime_from_asn1_generaltime(existing_certificate.get_notAfter())
+                                              - datetime.datetime.utcnow())
+                            if (valid_duration.days < 0):
+                                self._info(key_type.upper(), ' certificate ', certificate_name, ' has expired\n')
+                                replace_certificate = True
+                            elif (valid_duration.days < self._setting_int('renewal_days')):
+                                self._info(key_type.upper(), ' certificate ', certificate_name, ' will expire in ',
+                                           (str(valid_duration.days) + ' days') if (valid_duration.days) else 'less than a day',
+                                           '\n')
+                                replace_certificate = True
                             else:
-                                certificate_alt_names = self.get_alt_names(existing_certificate)
-                                new_alt_names = set(alt_names)
-                                existing_alt_names = set(certificate_alt_names)
-                                if (new_alt_names != existing_alt_names):
-                                    added_alt_names = new_alt_names - existing_alt_names
-                                    removed_alt_names = existing_alt_names - new_alt_names
-                                    added = ', '.join([alt_name for alt_name in alt_names if (alt_name in added_alt_names)])
-                                    removed = ', '.join([alt_name for alt_name in certificate_alt_names if (alt_name in removed_alt_names)])
-                                    self._info('Alt names changed for ', key_type.upper(), ' certificate ', certificate_name,
-                                               (', adding ' + added) if added else '',
-                                               (', removing ' + removed) if removed else '',
-                                               '\n')
-                                else:
-                                    if (not self._private_key_matches_certificate(keys[key_type].key, existing_certificate)):
-                                        self._info(key_type.upper(), ' certificate ', certificate_name, ' public key does not match private key\n')
-                                        changed_private_key = True
-                                    else:
-                                        cert_has_must_staple = self.has_oscp_must_staple(existing_certificate)
-                                        if (cert_has_must_staple != self._option(key_certificates[certificate_name], 'ocsp_must_staple')):
-                                            self._info(key_type.upper(), ' certificate ', certificate_name,
-                                                       ' has' if (cert_has_must_staple) else ' does not have',
-                                                       ' ocsp_must_staple option\n')
-                                        else:
-                                            valid_duration = (self._datetime_from_asn1_generaltime(existing_certificate.get_notAfter())
-                                                              - datetime.datetime.utcnow())
-                                            if (valid_duration.days < 0):
-                                                self._info(key_type.upper(), ' certificate ', certificate_name, ' has expired\n')
-                                            elif (valid_duration.days < self._setting_int('renewal_days')):
-                                                self._info(key_type.upper(), ' certificate ', certificate_name, ' will expire in ',
-                                                           (str(valid_duration.days) + ' days') if (valid_duration.days) else 'less than a day',
-                                                           '\n')
-                                            else:
-                                                self._debug(key_type.upper(), ' certificate ', certificate_name, ' valid beyond renewal window\n')
-                                                days_to_renew = valid_duration.days - self._setting_int('renewal_days')
-                                                self._detail(key_type.upper(), ' certificate due for renewal in ',
-                                                             days_to_renew, ' day' if (1 == days_to_renew) else ' days', '\n')
-                                                continue
+                                self._debug(key_type.upper(), ' certificate ', certificate_name, ' valid beyond renewal window\n')
+                                days_to_renew = valid_duration.days - self._setting_int('renewal_days')
+                                self._detail(key_type.upper(), ' certificate due for renewal in ',
+                                             days_to_renew, ' day' if (1 == days_to_renew) else ' days', '\n')
+
+                            if (not replace_certificate):
+                                continue
                     issue_certificate_key_types.append(key_type)
 
                 domain_names = collections.OrderedDict()
