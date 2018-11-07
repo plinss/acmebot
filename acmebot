@@ -153,7 +153,7 @@ class AcmeManager(object):
     def __init__(self):
         self.script_dir = os.path.dirname(os.path.realpath(__file__))
         self.script_name = os.path.basename(__file__)
-        self.script_version = '2.2.2'
+        self.script_version = '2.3.0'
 
         self._color_codes = {
             'black': 30,
@@ -2828,7 +2828,11 @@ class AcmeManager(object):
             return
 
         tlsa_records = self._lookup_tlsa_records(host_name, port_number, 'tcp')
-        if not tlsa_records:
+        if tlsa_records:
+            self._detail('Found TLSA records for ', host_name, ':', port_number, '\n')
+            for tlsa_record in tlsa_records:
+                self._detail('    ', tlsa_record, '\n')
+        else:
             self._detail('No TLSA records found for ', host_name, ':', port_number, '\n')
 
         for addr in addr_info:
@@ -2876,9 +2880,10 @@ class AcmeManager(object):
                     for tlsa_record in tlsa_records:
                         if self._tlsa_record_matches(tlsa_record, installed_certificate, installed_chain, root_certificate):
                             self._info('TLSA record matches on ', host_desc, '\n', color='green')
+                            self._detail('    ', tlsa_record, '\n')
                             break
                     else:
-                        self._warn('ERROR: No TLSA records match', key_type.upper(), ' certificate "',
+                        self._warn('ERROR: No TLSA records match ', key_type.upper(), ' certificate "',
                                    installed_certificate.get_subject().commonName, '"\n')
 
                 if (protocol_info):
