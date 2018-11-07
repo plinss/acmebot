@@ -2829,7 +2829,7 @@ class AcmeManager(object):
 
         tlsa_records = self._lookup_tlsa_records(host_name, port_number, 'tcp')
         if tlsa_records:
-            self._detail('Found TLSA records for ', host_name, ':', port_number, '\n')
+            self._debug('Found TLSA records for ', host_name, ':', port_number, '\n')
             for tlsa_record in tlsa_records:
                 self._detail('    ', tlsa_record, '\n')
         else:
@@ -2884,7 +2884,7 @@ class AcmeManager(object):
                             break
                     else:
                         self._warn('ERROR: No TLSA records match ', key_type.upper(), ' certificate "',
-                                   installed_certificate.get_subject().commonName, '"\n')
+                                   installed_certificate.get_subject().commonName, '" on ', host_desc, '\n')
 
                 if (protocol_info):
                     if ('public_key_pins' in protocol_info):

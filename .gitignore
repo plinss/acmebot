@@ -6,3 +6,4 @@ acme*.json
 *.zip
 *.orig
 *.sublime-*
+**/.DS_Store
