@@ -721,7 +721,7 @@ class AcmeManager(object):
             return [answer['data'][0].decode('ascii') for answer in response.answers]
         return []
 
-    def _lookup_tlsa_records(self, name_server, host, port, protocol):
+    def _lookup_tlsa_records(self, host, port, protocol, name_server=None):
         response, _ = self._dns_request('_{port}._{protocol}.{host}'.format(port=port, protocol=protocol, host=host), 52, name_server)
         if (response):
             return ['{} {} {} {}'.format(answer['data'][0], answer['data'][1], answer['data'][2], binascii.hexlify(answer['data'][3:]).decode('ascii'))
@@ -806,7 +806,7 @@ class AcmeManager(object):
                     records.append('{usage} 1 1 {digest}'.format(usage=usage_id, digest=hashlib.sha256(key_bytes).hexdigest()))
                     records.append('{usage} 1 2 {digest}'.format(usage=usage_id, digest=hashlib.sha512(key_bytes).hexdigest()))
 
-            if (set(records) == set(self._lookup_tlsa_records(name_server, host_name, tlsa_data.port, tlsa_data.protocol))):
+            if (set(records) == set(self._lookup_tlsa_records(host_name, tlsa_data.port, tlsa_data.protocol, name_server))):
                 self._detail('TLSA records already present for ', record_name, '\n')
                 continue
 
@@ -2312,6 +2312,7 @@ class AcmeManager(object):
                         if ((not private_key_data.keys[key_type].key)
                                 or ((certificate_name in saved_certificates) and (key_type in saved_certificates[certificate_name]))):
                             continue
+                        # XXX also should test for missing full cert or full key and save if configured
                         certificate = self.load_certificate('certificate', certificate_name, key_type)
                         if (certificate):
                             if (certificate_name not in saved_certificates):
@@ -2773,7 +2774,48 @@ class AcmeManager(object):
         ssl_sock.close()
         return installed_certificates, app_data['ocsp'], protocol_info
 
-    def _verify_certificate_installation(self, certificate_name, certificate, chain, key_type, host_name, port_number, starttls, cipher_list, protocol, keys):
+    def _tlsa_record_matches(self, tlsa_record, certificate, chain, root_certificate):
+        matches = []
+        usage, selector, matching_type, data = tlsa_record.split(' ', 4)
+        if ('0' == usage) or ('2' == usage):    # match record to chain + root
+            certificates = chain.copy()
+            if (root_certificate):
+                certificates.append(root_certificate)
+
+            if ('0' == selector):
+                for chain_certificate in certificates:
+                    matches.append(self._certificate_bytes(chain_certificate))
+            elif ('1' == selector):
+                for chain_certificate in certificates:
+                    matches.append(self._certificate_public_key_bytes(chain_certificate))
+            else:
+                self._warn('ERROR: unknown selector in TLSA record ', tlsa_record, '\n')
+        elif ('1' == usage) or ('3' == usage):  # match record to certifitcate
+            if ('0' == selector):
+                matches.append(self._certificate_bytes(certificate))
+            elif ('1' == selector):
+                matches.append(self._certificate_public_key_bytes(certificate))
+            else:
+                self._warn('ERROR: unknown selector in TLSA record ', tlsa_record, '\n')
+        else:
+            self._warn('ERROR: unknown usage in TLSA record ', tlsa_record, '\n')
+
+        for match in matches:
+            if ('0' == matching_type):  # entire certificate/key
+                if (binascii.hexlify(match).decode('ascii') == data):
+                    return True
+            elif ('1' == matching_type):    # sha256 of data
+                if (hashlib.sha256(match).hexdigest() == data):
+                    return True
+            elif ('2' == matching_type):    # sha512 of data
+                if (hashlib.sha512(match).hexdigest() == data):
+                    return True
+            else:
+                self._warn('ERROR: unknown matching type in TLSA record ', tlsa_record, '\n')
+        return False
+
+    def _verify_certificate_installation(self, certificate_name, certificate, chain, root_certificate,
+                                         key_type, host_name, port_number, starttls, cipher_list, protocol, keys):
         ssl_context = OpenSSL.SSL.Context(OpenSSL.SSL.SSLv23_METHOD)
         ssl_context.set_cipher_list(cipher_list)
 
@@ -2784,6 +2826,10 @@ class AcmeManager(object):
         except Exception as error:
             self._warn('ERROR: Unable to get address for ', host_name, '\n', self._indent(error), '\n')
             return
+
+        tlsa_records = self._lookup_tlsa_records(host_name, port_number, 'tcp')
+        if not tlsa_records:
+            self._detail('No TLSA records found for ', host_name, ':', port_number, '\n')
 
         for addr in addr_info:
             host_desc = host_name + ' at ' + (('[' + addr[4][0] + ']') if (socket.AF_INET6 == addr[0]) else addr[4][0]) + ':' + str(port_number)
@@ -2826,6 +2872,15 @@ class AcmeManager(object):
                     if (self.has_oscp_must_staple(certificate)):
                         self._warn('ERROR: Certificate has OCSP Must-Staple but no OSCP staple found on ', host_desc, '\n')
 
+                if tlsa_records:
+                    for tlsa_record in tlsa_records:
+                        if self._tlsa_record_matches(tlsa_record, installed_certificate, installed_chain, root_certificate):
+                            self._info('TLSA record matches on ', host_desc, '\n', color='green')
+                            break
+                    else:
+                        self._warn('ERROR: No TLSA records match', key_type.upper(), ' certificate "',
+                                   installed_certificate.get_subject().commonName, '"\n')
+
                 if (protocol_info):
                     if ('public_key_pins' in protocol_info):
                         for pin_key_type, pin_key_name, pin_key_purpose, pin_key in keys:
@@ -2852,6 +2907,8 @@ class AcmeManager(object):
         all_ciphers = ssl_sock.get_cipher_list()
         key_type_ciphers['rsa'] = ':'.join([cipher_name for cipher_name in all_ciphers if 'RSA' in cipher_name]).encode('ascii')
         key_type_ciphers['ecdsa'] = ':'.join([cipher_name for cipher_name in all_ciphers if 'ECDSA' in cipher_name]).encode('ascii')
+
+        root_certificates = self.load_root_certificates()
 
         private_keys = self._config('private_keys')
         for private_key_name in private_keys:
@@ -2898,7 +2955,7 @@ class AcmeManager(object):
                                     continue
                             for host_name in self._get_list(verify, 'hosts', alt_names):
                                 if (self._host_in_list(host_name, alt_names)):
-                                    self._verify_certificate_installation(certificate_name, certificate, chain, key_type,
+                                    self._verify_certificate_installation(certificate_name, certificate, chain, root_certificates[key_type], key_type,
                                                                           host_name, verify['port'], verify['starttls'], key_type_ciphers[key_type],
                                                                           verify['protocol'], keys)
 
