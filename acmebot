@@ -2877,12 +2877,16 @@ class AcmeManager(object):
                         self._warn('ERROR: Certificate has OCSP Must-Staple but no OSCP staple found on ', host_desc, '\n')
 
                 if tlsa_records:
+                    tlsa_match = False
                     for tlsa_record in tlsa_records:
                         if self._tlsa_record_matches(tlsa_record, installed_certificate, installed_chain, root_certificate):
                             self._info('TLSA record matches on ', host_desc, '\n', color='green')
                             self._detail('    ', tlsa_record, '\n')
-                            break
-                    else:
+                            tlsa_match = True
+                        else:
+                            self._detail('TLSA record does not match on ', host_desc, '\n')
+                            self._detail('    ', tlsa_record, '\n')
+                    if not tlsa_match:
                         self._warn('ERROR: No TLSA records match ', key_type.upper(), ' certificate "',
                                    installed_certificate.get_subject().commonName, '" on ', host_desc, '\n')
 
