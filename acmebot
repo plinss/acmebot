@@ -153,7 +153,7 @@ class AcmeManager(object):
     def __init__(self):
         self.script_dir = os.path.dirname(os.path.realpath(__file__))
         self.script_name = os.path.basename(__file__)
-        self.script_version = '2.3.0'
+        self.script_version = '2.3.1'
 
         self._color_codes = {
             'black': 30,
@@ -2816,7 +2816,7 @@ class AcmeManager(object):
 
     def _verify_certificate_installation(self, certificate_name, certificate, chain, root_certificate,
                                          key_type, host_name, port_number, starttls, cipher_list, protocol, keys):
-        ssl_context = OpenSSL.SSL.Context(OpenSSL.SSL.SSLv23_METHOD)
+        ssl_context = OpenSSL.SSL.Context(OpenSSL.SSL.TLSv1_METHOD | OpenSSL.SSL.TLSv1_2_METHOD)
         ssl_context.set_cipher_list(cipher_list)
 
         try:
@@ -2911,7 +2911,7 @@ class AcmeManager(object):
 
     def verify_certificate_installation(self, private_key_names):
         key_type_ciphers = {}
-        ssl_context = OpenSSL.SSL.Context(OpenSSL.SSL.SSLv23_METHOD)
+        ssl_context = OpenSSL.SSL.Context(OpenSSL.SSL.TLSv1_METHOD | OpenSSL.SSL.TLSv1_2_METHOD)
         ssl_sock = OpenSSL.SSL.Connection(ssl_context, socket.socket())
         all_ciphers = ssl_sock.get_cipher_list()
         key_type_ciphers['rsa'] = ':'.join([cipher_name for cipher_name in all_ciphers if 'RSA' in cipher_name]).encode('ascii')
