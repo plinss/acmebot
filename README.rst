@@ -772,9 +772,9 @@ For example::
             "example.com": {
                 "alt_names": {
                     "example.com": ["@", "www"]
-                }
-            },
-            "services": ["nginx"]
+                },
+                "services": ["nginx"]
+            }
         }
     }
 
@@ -962,7 +962,7 @@ to specify which zone should be updated for each TLSA record.
 
 For each zone in the TLSA record object,
 specify a list of either host name strings or objects.
-Using a host name sting is equivalent to::
+Using a host name string is equivalent to::
 
     {
         "host": "<host-name>"
