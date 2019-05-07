@@ -795,7 +795,7 @@ The name of each certificate is used as the name of the certificate files.
   so that associated DNS updates happen in the correct zone.
   The zone name may be used directly by specifying ``"@"`` for the host name.
   Multiple zones may be specified.
-  The default value is the common name of the certificate in the zone of the first registered domain name according to the [Public Suffix List](https://publicsuffix.org/).
+  The default value is the common name of the certificate in the zone of the first registered domain name according to the `Public Suffix List <https://publicsuffix.org/>`_.
   For example, if the common name is "example.com", the default ``alt_names`` will be: ``{"example.com": ["@"] }``;
   if the common name is "foo.bar.example.com", the default ``alt_names`` will be: ``{ "example.com": ["foo.bar"] }``.
 * ``services`` specifies the list of services to be reloaded when the certificate is issued, renewed, or modified.
