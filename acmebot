@@ -153,7 +153,7 @@ class AcmeManager(object):
     def __init__(self):
         self.script_dir = os.path.dirname(os.path.realpath(__file__))
         self.script_name = os.path.basename(__file__)
-        self.script_version = '2.3.2'
+        self.script_version = '2.3.3'
 
         self._color_codes = {
             'black': 30,
@@ -298,7 +298,8 @@ class AcmeManager(object):
                 'reload_zone_command': '/etc/bind/reload-zone.sh',
                 'nsupdate_command': '/usr/bin/nsupdate',
                 'public_suffix_list_url': 'https://publicsuffix.org/list/public_suffix_list.dat',
-                'verify': None
+                'verify': None,
+                'services': None
             },
             'directories': {
                 'pid': '/var/run',
@@ -2433,14 +2434,14 @@ class AcmeManager(object):
                 for certificate_name in saved_certificates:
                     for key_type in saved_certificates[certificate_name]:
                         self._status(key_type.upper(), ' certificate ', certificate_name, ' installed\n')
-                        self.update_services(self._get_list(key_certificates[certificate_name], 'services'))
+                        self.update_services(self._option_list(key_certificates[certificate_name], 'services'))
                         if (not self._setting('follower_mode')):
                             for zone_name in key_certificates[certificate_name]['alt_names']:
                                 if (not self._zone_key(zone_name)):
                                     updated_key_zones.add(zone_name)
                 if (generated_backup_key or generated_hpkp_headers):    # reload services for all certificates
                     for certificate_name in key_certificates:
-                        self.update_services(self._get_list(key_certificates[certificate_name], 'services'))
+                        self.update_services(self._option_list(key_certificates[certificate_name], 'services'))
 
             except Exception as error:
                 self._warn('Unable to install keys and certificates for ', private_key_name, '\n', self._indent(error), '\n')
@@ -2615,7 +2616,7 @@ class AcmeManager(object):
                                     self._add_hook('sct_installed', key_name=private_key_name, key_type=key_type,
                                                    certificate_name=certificate_name, ct_log_name=ct_log_name,
                                                    sct_file=self._file_path('sct', certificate_name, key_type, ct_log_name=ct_log_name))
-                                    self.update_services(self._get_list(key_certificates[certificate_name], 'services'))
+                                    self.update_services(self._option_list(key_certificates[certificate_name], 'services'))
                         else:
                             self._warn(key_type.upper(), ' certificate ', certificate_name, ' not found\n')
 
@@ -2711,7 +2712,7 @@ class AcmeManager(object):
                                         self._add_hook('ocsp_installed', key_name=private_key_name, key_type=key_type,
                                                        certificate_name=certificate_name,
                                                        ocsp_file=self._file_path('ocsp', certificate_name, key_type))
-                                        self.update_services(self._get_list(key_certificates[certificate_name], 'services'))
+                                        self.update_services(self._option_list(key_certificates[certificate_name], 'services'))
                                         break
                                     else:
                                         self._warn(key_type.upper(), ' certificate ', certificate_name, ' has OCSP status "', ocsp_status.upper(), '"',

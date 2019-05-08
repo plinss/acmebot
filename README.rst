@@ -605,6 +605,8 @@ All of these need only be present when the desired value is different from the d
   The default value is ``"/usr/bin/nsupdate"``.
 * ``verify`` specifies the default ports to perform installation verification on.
   The default value is ``null``.
+* ``services`` specifies the default services to associate with certificates.
+  The default value is ``null``.
 
 Example::
 
@@ -800,6 +802,7 @@ The name of each certificate is used as the name of the certificate files.
   if the common name is "foo.bar.example.com", the default ``alt_names`` will be: ``{ "example.com": ["foo.bar"] }``.
 * ``services`` specifies the list of services to be reloaded when the certificate is issued, renewed, or modified.
   This may be omitted.
+  The default value is the value specified in the ``settings`` section.
 * ``dhparam_size`` specifies the number of bits to use for custom Diffie-Hellman paramaters for the certificate.
   The default value is the value specified in the ``settings`` section.
   Custom Diffie-Hellman paramaters may be ommitted from the certificate by setting this to ``0`` or ``null``.
