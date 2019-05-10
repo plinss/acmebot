@@ -153,7 +153,7 @@ class AcmeManager(object):
     def __init__(self):
         self.script_dir = os.path.dirname(os.path.realpath(__file__))
         self.script_name = os.path.basename(__file__)
-        self.script_version = '2.3.3'
+        self.script_version = '2.3.4'
 
         self._color_codes = {
             'black': 30,
@@ -499,7 +499,7 @@ class AcmeManager(object):
                 if (warn):
                     self._warn('Unable to create directory ', dir_path, '\n', self._indent(error), '\n')
 
-    def _open_file(self, file_path, mode='r', chmod=0o777, warn=True):
+    def _open_file(self, file_path, mode='r', chmod=0o666, warn=True):
         def opener(file_path, flags):
             return os.open(file_path, flags, mode=chmod)
         if ((('w' in mode) or ('a' in mode)) and isinstance(file_path, str)):
@@ -1666,6 +1666,8 @@ class AcmeManager(object):
                     self._warn('Unable to retrieve public suffix list from ', public_suffix_list_url, ' HTTP error: ', error.code, ' ', error.reason, '\n',
                                self._indent(error.read()), '\n')
                 elif (304 == error.code):
+                    now = time.time()
+                    os.utime(public_suffix_list_path, (now, now))
                     self._detail('Public suffix list not modified\n')
                 else:
                     self._warn('Unable to retrieve public suffix list from ', public_suffix_list_url, ' HTTP error: ', error.code, ' ', error.reason, '\n')
@@ -1673,7 +1675,7 @@ class AcmeManager(object):
         self._public_suffixes = {}
         self._public_suffix_exceptions = {}
         if (os.path.isfile(public_suffix_list_path)):
-            with open(public_suffix_list_path) as public_suffix_list_file:
+            with open(public_suffix_list_path, encoding='utf-8') as public_suffix_list_file:
                 lines = public_suffix_list_file.read().splitlines()
                 for line in lines:
                     line = line.strip()
