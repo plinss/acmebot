@@ -1352,7 +1352,7 @@ When using an object, the avaialable fields are:
 * ``port`` specifies the port number to connect to.
   Required.
 * ``starttls`` specifies the STARTTLS mechanism that should be used to initiate a TLS session.
-  Allowed values are: ``null``, ``smtp``, ``pop3``, ``imap``, ``sieve``, ``ftp``, and ``xmpp``.
+  Allowed values are: ``null``, ``smtp``, ``pop3``, ``imap``, ``sieve``, ``ftp``, ``ldap``, and ``xmpp``.
   The default value is ``null``.
 * ``protocol`` specifies the protocol used to obtain additional information to verify.
   Currently this can retrieve Public-Key-Pins http headers to ensure that they are properly set.

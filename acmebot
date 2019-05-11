@@ -153,7 +153,7 @@ class AcmeManager(object):
     def __init__(self):
         self.script_dir = os.path.dirname(os.path.realpath(__file__))
         self.script_name = os.path.basename(__file__)
-        self.script_version = '2.3.4'
+        self.script_version = '2.3.5'
 
         self._color_codes = {
             'black': 30,
@@ -2750,7 +2750,7 @@ class AcmeManager(object):
             buffer = sock.recv(4096)
             self._detail('SMTP: ', buffer)
             if (b'STARTTLS' not in buffer):
-                sock.shutdown()
+                sock.shutdown(socket.SHUT_RDWR)
                 sock.close()
                 raise Exception('STARTTLS not supported on server')
             sock.send(b'starttls\r\n')
@@ -2777,11 +2777,20 @@ class AcmeManager(object):
             buffer = sock.recv(4096)
             self._detail('SIEVE: ', buffer)
             if (b'"STARTTLS"' not in buffer):
-                sock.shutdown()
+                sock.shutdown(socket.SHUT_RDWR)
                 sock.close()
                 raise Exception('STARTTLS not supported on server')
             sock.send(b'StartTls\r\n')
             self._detail('SIEVE: ', sock.recv(4096))
+        elif ('ldap' == type):
+            self._detail('Sending LDAP StartTLS\n')
+            sock.send(b'\x30\x1d\x02\x01\x01\x77\x18\x80\x16\x31\x2e\x33\x2e\x36\x2e\x31\x2e\x34\x2e\x31\x2e\x31\x34\x36\x36\x2e\x32\x30\x30\x33\x37')
+            buffer = sock.recv(4096)
+            if (b'\x0a\x01\x00' != buffer[7:10]):
+                sock.shutdown(socket.SHUT_RDWR)
+                sock.close()
+                raise Exception('STARTTLS not supported on server')
+            self._detail('LDAP: ', buffer.hex(), '\n')
         else:
             sock.shutdown()
             sock.close()
