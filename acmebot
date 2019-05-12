@@ -59,6 +59,7 @@ import pwd
 import random
 import re
 import shlex
+import shutil
 import socket
 import struct
 import subprocess
@@ -153,7 +154,7 @@ class AcmeManager(object):
     def __init__(self):
         self.script_dir = os.path.dirname(os.path.realpath(__file__))
         self.script_name = os.path.basename(__file__)
-        self.script_version = '2.3.5'
+        self.script_version = '2.3.6'
 
         self._color_codes = {
             'black': 30,
@@ -513,7 +514,7 @@ class AcmeManager(object):
                                              archive_date.strftime('%Y_%m_%d_%H%M%S') if (archive_date) else '',
                                              file_type + '.' + os.path.basename(file_path))
             self._makedir(os.path.dirname(archive_file_path), 0o640)
-            os.rename(file_path, archive_file_path)
+            shutil.move(file_path, archive_file_path)
             self._detail('Archived ', file_path, ' as ', archive_file_path, '\n')
             return (file_path, archive_file_path)
         return (None, None)
@@ -533,7 +534,7 @@ class AcmeManager(object):
     def _rename_file(self, old_file_path, new_file_path, chmod=None, timestamp=None):
         if (os.path.isfile(old_file_path)):
             self._makedir(os.path.dirname(new_file_path), chmod)
-            os.rename(old_file_path, new_file_path)
+            shutil.move(old_file_path, new_file_path)
             if (chmod):
                 try:
                     os.chmod(new_file_path, chmod)
@@ -570,7 +571,7 @@ class AcmeManager(object):
                     os.remove(committed_file_path)
             for original_file_path, archived_file_path in archived_files:
                 if (original_file_path):
-                    os.rename(archived_file_path, original_file_path)
+                    shutil.move(archived_file_path, original_file_path)
             raise error
 
     def _get_list(self, config, key, default=[]):
@@ -1382,12 +1383,6 @@ class AcmeManager(object):
         req.sign(private_key, 'sha256')
         return OpenSSL.crypto.dump_certificate_request(OpenSSL.crypto.FILETYPE_PEM, req)
 
-    def _device_id(self, directory):
-        directory = os.path.abspath(directory)
-        while (not os.path.exists(directory)):
-            directory = os.path.dirname(directory)
-        return os.stat(directory).st_dev
-
     def _add_hook(self, hook_name, **kwargs):
         hook = self._config('hooks', hook_name)
         if (hook):
@@ -1441,13 +1436,7 @@ class AcmeManager(object):
         self._makedir(temp_dir)
         if (not os.path.exists(temp_dir)):
             self._error('Unable to create temp directory: "', temp_dir, '"\n')
-        temp_device = self._device_id(temp_dir)
-        for directory_type in ['resource', 'private_key', 'backup_key', 'previous_key', 'full_key', 'certificate', 'full_certificate',
-                               'chain', 'param', 'challenge', 'hpkp', 'sct', 'archive']:
-            directory = self._directory(directory_type)
-            if (directory and (self._device_id(directory) != temp_device)):
-                self._error('Temp directory must be on same device as ', directory_type, ' directory\n')
-        FileTransaction.tempdir = self._directory('temp')
+        FileTransaction.temp_dir = temp_dir
 
         default_verify = self._setting_list('verify')
         if (default_verify):
