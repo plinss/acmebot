@@ -1,0 +1,272 @@
+---
+account:
+  email: "<youremail@yourdomain>"
+
+settings:
+  follower_mode: false
+  log_level: debug
+  color_output: true
+  key_size: 4096
+  key_curve: secp384r1
+  key_cipher: blowfish
+  key_passphrase: null
+  dhparam_size: 2048
+  ecparam_curve: secp384r1
+  file_user: root
+  file_group: ssl-cert
+  hpkp_days: 60
+  pin_subdomains: true
+  hpkp_report_uri: null
+  ocsp_must_staple: false
+  ocsp_responder_urls:
+    - http://ocsp.int-x3.letsencrypt.org
+  ct_submit_logs:
+    - google_icarus
+    - google_pilot
+  renewal_days: 30
+  expiration_days: 730
+  auto_rollover: false
+  max_dns_lookup_attempts: 60
+  dns_lookup_delay: 10
+  max_domains_per_order: 100
+  max_authorization_attempts: 30
+  authorization_delay: 10
+  cert_poll_time: 30
+  max_ocsp_verify_attempts: 10
+  ocsp_verify_retry_delay: 5
+  min_run_delay: 300
+  max_run_delay: 3600
+  acme_directory_url: https://acme-v02.api.letsencrypt.org/directory
+  reload_zone_command: /etc/bind/reload-zone.sh
+  nsupdate_command: /usr/bin/nsupdate
+  public_suffix_list_url: https://publicsuffix.org/list/public_suffix_list.dat
+
+directories:
+  pid: /var/run
+  log: /var/log/acmebot
+  resource: /var/local/acmebot
+  private_key: /etc/ssl/private
+  backup_key: /etc/ssl/private
+  previous_key: null
+  full_key: /etc/ssl/private
+  certificate: /etc/ssl/certs
+  full_certificate: /etc/ssl/certs
+  chain: /etc/ssl/certs
+  param: /etc/ssl/params
+  challenge: /etc/ssl/challenges
+  http_challenge: null
+  hpkp: /etc/ssl/hpkp
+  ocsp: /etc/ssl/ocsp
+  sct: "/etc/ssl/scts/{name}/{key_type}"
+  update_key: /etc/ssl/update_keys
+  archive: /etc/ssl/archive
+  temp: null
+
+key_type_suffixes:
+  rsa: .rsa
+  ecdsa: .ecdsa
+
+file_names:
+  log: acmebot.log
+  private_key: "{name}{suffix}.key"
+  backup_key: "{name}_backup{suffix}.key"
+  previous_key: "{name}_previous{suffix}.key"
+  full_key: "{name}_full{suffix}.key"
+  certificate: "{name}{suffix}.pem"
+  full_certificate: "{name}+root{suffix}.pem"
+  chain: "{name}_chain{suffix}.pem"
+  param: "{name}_param.pem"
+  challenge: "{name}"
+  hpkp: "{name}.{server}"
+  ocsp: "{name}{suffix}.ocsp"
+  sct: "{ct_log_name}.sct"
+
+hpkp_headers:
+  apache: "Header always set Public-Key-Pins \"{header}\"\n"
+  nginx: "add_header Public-Key-Pins \"{header}\" always;\n"
+
+services:
+  apache: systemctl reload apache2
+  coturn: systemctl restart coturn
+  dovecot: systemctl restart dovecot
+  etherpad: systemctl restart etherpad
+  mysql: systemctl reload mysql
+  nginx: systemctl reload nginx
+  postfix: systemctl reload postfix
+  postgresql: systemctl reload postgresql
+  prosody: systemctl restart prosody
+  slapd: systemctl restart slapd
+  synapse: systemctl restart matrix-synapse
+  znc: systemctl restart znc
+
+hooks:
+  set_dns_challenge:
+  clear_dns_challenge:
+  dns_zone_update:
+  set_http_challenge:
+  clear_http_challenge:
+  private_key_rollover:
+  private_key_installed:
+  backup_key_installed:
+  previous_key_installed:
+  hpkp_header_installed:
+  certificate_installed:
+  full_certificate_installed:
+  chain_installed:
+  full_key_installed:
+  params_installed:
+  sct_installed:
+  ocsp_installed:
+
+ct_logs:
+  google_pilot:
+    url: https://ct.googleapis.com/pilot
+    id: pLkJkLQYWBSHuxOizGdwCjw1mAT5G9+443fNDsgN3BA=
+  google_icarus:
+    url: https://ct.googleapis.com/icarus
+    id: KTxRllTIOWW6qlD8WAfUt2+/WHopctykwwz05UVH9Hg=
+  google_rocketeer:
+    url: https://ct.googleapis.com/rocketeer
+    id: 7ku9t3XOYLrhQmkfq+GeZqMPfl+wctiDAMR7iXqo/cs=
+  google_skydiver:
+    url: https://ct.googleapis.com/skydiver
+    id: u9nfvB+KcbWTlCOXqpJ7RzhXlQqrUugakJZkNo4e0YU=
+  google_testtube:
+    url: http://ct.googleapis.com/testtube
+    id: sMyD5aX5fWuvfAnMKEkEhyrH6IsTLGNQt8b9JuFsbHc=
+  google_argon2018:
+    url: https://ct.googleapis.com/logs/argon2018
+    id: pFASaQVaFVReYhGrN7wQP2KuVXakXksXFEU+GyIQaiU=
+  digicert:
+    url: https://ct1.digicert-ct.com/log
+    id: VhQGmi/XwuzT9eG9RLI+x0Z2ubyZEVzA75SYVdaJ0N0=
+  symantec_ct:
+    url: https://ct.ws.symantec.com
+    id: 3esdK3oNT6Ygi4GtgWhwfi6OnQHVXIiNPRHEzbbsvsw=
+  symantec_vega:
+    url: https://vega.ws.symantec.com
+    id: vHjh38X2PGhGSTNNoQ+hXwl5aSAJwIG08/aRfz7ZuKU=
+  cnnic:
+    url: https://ctserver.cnnic.cn
+    id: pXesnO11SN2PAltnokEInfhuD0duwgPC7L7bGF8oJjg=
+  cloudflare_nimbus2018:
+    url: https://ct.cloudflare.com/logs/nimbus2018
+    id: 23Sv7ssp7LH+yj5xbSzluaq7NveEcYPHXZ1PN7Yfv2Q=
+
+certificates:
+  <certificate-name>:
+    common_name: <common-name>
+    alt_names:
+      <zone-name>:
+        - "@",
+        - <host-name>
+    services:
+      - <service-name>
+    tlsa_records:
+      <zone-name>:
+        - <host-name>
+        - host: <host-name>
+          port: <port-number>
+          usage: pkix-ee
+          selector: spki
+          protocol: tcp
+          ttl: 300
+    dhparam_size: 2048
+    ecparam_curve: secp384r1
+    key_types:
+      - rsa
+      - ecdsa
+    key_size: 4096
+    key_curve: secp384r1
+    key_cipher: blowfish
+    key_passphrase:
+    expiration_days: 730
+    auto_rollover: false
+    hpkp_days: 30
+    pin_subdomains: true
+    hpkp_report_uri:
+    ocsp_must_staple: false
+    ocsp_responder_urls:
+      - http://ocsp.int-x3.letsencrypt.org"
+    ct_submit_logs:
+      - google_icarus
+      - google_pilot
+    verify:
+      - 443,
+      - port: 25
+        hosts:
+          - <domain-name>
+          - <domain-name>
+        starttls: smtp
+        key_types:
+          - rsa
+          - ecdsa
+
+private_keys:
+  <key-name>:
+    certificates:
+      <certificate-name>:
+        common_name: <common-name>
+        alt_names:
+          <zone-name>:
+            - "@"
+            - <host-name>
+        services:
+          - <service-name>
+        tlsa_records:
+          <zone-name>:
+            - <host-name>
+            - host: <host-name>
+              port: <port-number>
+              usage: pkix-ee
+              selector: spki
+              protocol: tcp
+              ttl: 300
+        dhparam_size: 2048
+        ecparam_curve: secp384r1
+        key_types:
+          - rsa
+          - ecdsa
+        ocsp_must_staple: false
+        ocsp_responder_urls:
+          - "http://ocsp.int-x3.letsencrypt.org"
+        ct_submit_logs:
+          - google_icarus
+          - google_pilot
+        verify:
+          - 443
+          - port: 25
+            hosts:
+              - <domain-name>
+              - <domain-name>
+            starttls: smtp
+            key_types:
+              - rsa
+              - ecdsa
+    key_types:
+      - rsa
+      - ecdsa
+    key_size: 4096
+    key_curve: secp384r1
+    key_cipher: blowfish
+    key_passphrase:
+    expiration_days: 730
+    auto_rollover: false
+    hpkp_days: 30
+    pin_subdomains: true
+    hpkp_report_uri: null
+
+authorizations:
+  <zone-name>:
+    - <host-name>
+    - <host-name>
+
+http_challenges:
+  <domain-name>: <challenge-directory>
+
+zone_update_keys:
+  <zone-name>: <key-file>
+  <zone-name>:
+    file: <key-file>
+    server: <server>
+    port: <port-number>

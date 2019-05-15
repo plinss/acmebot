@@ -35,7 +35,8 @@
         "max_run_delay": 3600,
         "acme_directory_url": "https://acme-v02.api.letsencrypt.org/directory",
         "reload_zone_command": "/etc/bind/reload-zone.sh",
-        "nsupdate_command": "/usr/bin/nsupdate"
+        "nsupdate_command": "/usr/bin/nsupdate",
+        "public_suffix_list_url": "https://publicsuffix.org/list/public_suffix_list.dat"
     },
     "directories": {
         "pid": "/var/run",
@@ -234,7 +235,7 @@
                     "ocsp_must_staple": false,
                     "ocsp_responder_urls": ["http://ocsp.int-x3.letsencrypt.org"],
                     "ct_submit_logs": ["google_icarus", "google_pilot"],
-                    "verify_ports": [
+                    "verify": [
                         443,
                         {
                             "port": 25,

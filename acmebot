@@ -86,6 +86,8 @@ import josepy
 
 import pkg_resources
 
+import yaml
+
 
 DNSTuple = collections.namedtuple('DNSTuple', ['datetime', 'name_server', 'domain_name', 'identifier', 'response', 'attempt_count'])
 ChallengeTuple = collections.namedtuple('ChallengeTuple', ['identifier', 'response'])
@@ -154,7 +156,7 @@ class AcmeManager(object):
     def __init__(self):
         self.script_dir = os.path.dirname(os.path.realpath(__file__))
         self.script_name = os.path.basename(__file__)
-        self.script_version = '2.3.6'
+        self.script_version = '2.4.0'
 
         self._color_codes = {
             'black': 30,
@@ -209,7 +211,7 @@ class AcmeManager(object):
                                action='store_true', dest='no_color', default=False,
                                help='Suppress colorized output')
         argparser.add_argument('-c', '--config',
-                               dest='config_path', default=self.script_name + '.json', metavar='CONFIG_PATH',
+                               dest='config_path', default=self.script_name, metavar='CONFIG_PATH',
                                help='Specify file path for config')
         argparser.add_argument('-w', '--randomwait',
                                action='store_true', dest='random_wait', default=False,
@@ -247,6 +249,9 @@ class AcmeManager(object):
         argparser.add_argument('--export-client',
                                action='store_true', dest='export_client', default=False,
                                help='Export client key')
+        argparser.add_argument('--show-config',
+                               action='store_true', dest='show_config', default=False,
+                               help='Display configuration settings')
         argparser.add_argument('-p', '--pass', nargs=1, default=False,
                                action='store', dest='passphrase', metavar='PASSPHRASE',
                                help='Passphrase for private keys')
@@ -408,17 +413,33 @@ class AcmeManager(object):
             }
         }
 
+    def _load_yaml(self, stream, object_pairs_hook=dict):
+        class OrderedLoader(yaml.SafeLoader):
+            pass
+
+        def construct_mapping(loader, node):
+            loader.flatten_mapping(node)
+            return object_pairs_hook(loader.construct_pairs(node))
+
+        OrderedLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, construct_mapping)
+        return yaml.load(stream, OrderedLoader)
+
     def _load_config(self, file_path, search_paths=[]):
         search_paths = [''] if (os.path.isabs(file_path)) else search_paths
+        file_path, file_extension = os.path.splitext(file_path)
+        extensions = ['.json', '.yaml', '.yml'] if not file_extension else [file_extension]
         for search_path in search_paths:
-            config_file_path = os.path.join(search_path, file_path)
-            if (os.path.isfile(config_file_path)):
-                try:
-                    with open(config_file_path) as config_file:
-                        return (json.load(config_file, object_pairs_hook=collections.OrderedDict), os.path.abspath(config_file_path))
-                except Exception as error:
-                    self._error('Error reading config file ', config_file_path, ': ', error, '\n')
-        self._error('Config file ', file_path, ' not found\n')
+            for extension in extensions:
+                config_file_path = os.path.join(search_path, file_path) + extension
+                if (os.path.isfile(config_file_path)):
+                    try:
+                        with open(config_file_path) as config_file:
+                            if ('.json' == extension):
+                                return (json.load(config_file, object_pairs_hook=collections.OrderedDict), os.path.abspath(config_file_path))
+                            return (self._load_yaml(config_file, object_pairs_hook=collections.OrderedDict), os.path.abspath(config_file_path))
+                    except Exception as error:
+                        self._error('Error reading config file ', config_file_path, ': ', error, '\n')
+        self._error('Config file ', file_path, file_extension, ' not found\n')
 
     def _message(self, *args):
         message = ''
@@ -1432,6 +1453,8 @@ class AcmeManager(object):
                     if (key not in self.config[section_name]):
                         self.config[section_name][key] = value
 
+        self._detail('Loaded config from: ', self.config_file_path, '\n')
+
         temp_dir = self._directory('temp') if (self._directory('temp')) else tempfile.gettempdir()
         self._makedir(temp_dir)
         if (not os.path.exists(temp_dir)):
@@ -1485,6 +1508,8 @@ class AcmeManager(object):
                 self._error('No certificates defined for private key ', private_key_name, '\n')
             certificate_key_types = set()
             for certificate_name in key_certificates:
+                if (key_certificates[certificate_name] is None):
+                    key_certificates[certificate_name] = {}
                 common_name = key_certificates[certificate_name].get('common_name', certificate_name)
                 if ('alt_names' not in key_certificates[certificate_name]):
                     registered_name, host_name = self._split_registered_domain(common_name)
@@ -3054,6 +3079,9 @@ class AcmeManager(object):
                                                                           host_name, verify['port'], verify['starttls'], key_type_ciphers[key_type],
                                                                           verify['protocol'], keys)
 
+    def show_config(self):
+        self._status('Configuration:\n', json.dumps(self.config, indent=4), '\n')
+
     def _process_running(self, pid_file_path):
         try:
             with open(pid_file_path) as pid_file:
@@ -3090,7 +3118,7 @@ class AcmeManager(object):
             pid_file.write(str(os.getpid()))
         try:
             if (not (self.args.revoke or self.args.auth or self.args.certs or self.args.tlsa or self.args.sct or self.args.ocsp or self.args.verify
-                     or self.args.export_client)):
+                     or self.args.export_client or self.args.show_config)):
                 self.args.auth = True
                 self.args.certs = True
                 self.args.tlsa = True
@@ -3122,6 +3150,8 @@ class AcmeManager(object):
                 self.verify_certificate_installation(self.args.private_key_names)
             if (self.args.export_client):
                 self.export_client_key()
+            if (self.args.show_config):
+                self.show_config()
             self.disconnect_client()
         finally:
             os.remove(pid_file_path)

@@ -158,7 +158,7 @@ On Debian Stretch::
     sudo pip3 install -r requirements.txt
 
 Clone this repository or download the ``acmebot`` file and install it on your server.
-Copy the ``acmebot.example.json`` file to ``acmebot.json`` and edit the configuration options.
+Copy either the ``acmebot.example.json`` file or the ``acmebot.example.yaml`` file to ``acmebot.json`` (or ``acmebot.yaml``) and edit the configuration options.
 The configuration file can be placed in the current directory that the tool is run from,
 the /etc/acmebot directory,
 or the same directory that the acmebot tool is installed in.
@@ -208,7 +208,7 @@ it is meant to show all possible configuration options and their defaults,
 rather than demonstrate a basic simple configuration.
 
 The only items that must be present in the configuration file to create and maintain a certificate are your account email address,
-and the file name, and subject alternative names for the certificate.
+and the file name for the certificate.
 By default, the common name of the certificate will be the same as the certificate file name.
 
 For example::
@@ -279,6 +279,7 @@ issue certificates,
 generate backup private keys,
 generate custom Diffie-Hellman parameters,
 retrieve Signed Certificate Timestamps from certificate transparency logs,
+retrieve an OCSP response from the certificate authority,
 and install the certificates and private keys into /etc/ssl/certs and /etc/ssl/private.
 
 If desired, you can test the tool using Let's Encrypt's staging server.
@@ -470,16 +471,19 @@ and can be used via::
 Configuration
 =============
 
-The configuration file ``acmebot.json`` may be placed in the current working directory,
+The configuration file ``acmebot.json`` or ``acmebot.yaml`` may be placed in the current working directory,
 in /etc/acmebot,
 or in the same directory as the acmebot tool is installed in.
 A different configuration file name may be specified on the command line.
 If the specified file name is not an absolute path,
 it will be searched for in the same locations,
 e.g. ``acmebot --config config.json`` will load ``./config.json``, ``/etc/acmebot/config.json``, or ``<install-dir>/config.json``.
-The file must adhere to standard JSON format.
+If the file extension is omitted, the tool will search for a file with the extensions: ``.json``, ``.yaml``, and ``.yml`` in each location.
 
-The file ``acmebot.example.json`` provides a template of all configuration options and their default values.
+The configuration file must adhere to standard JSON or YAML formats.
+The examples given in this document are in JSON format, however, the equivalent structures may be expressed in YAML.
+
+The files ``acmebot.example.json`` and ``acmebot.example.yaml`` provide a template of all configuration options and their default values.
 Entries inside angle brackets ``"<example>"`` must be replaced (without the angle brackets),
 all other values may be removed unless you want to override the default values.
 
