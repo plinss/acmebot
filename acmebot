@@ -156,7 +156,7 @@ class AcmeManager(object):
     def __init__(self):
         self.script_dir = os.path.dirname(os.path.realpath(__file__))
         self.script_name = os.path.basename(__file__)
-        self.script_version = '2.4.0'
+        self.script_version = '2.4.1'
 
         self._color_codes = {
             'black': 30,
@@ -597,7 +597,7 @@ class AcmeManager(object):
 
     def _get_list(self, config, key, default=[]):
         value = config.get(key, default)
-        return value if (isinstance(value, collections.Iterable) and not isinstance(value, str)) else [] if (value is None) else [value]
+        return value if (isinstance(value, collections.abc.Iterable) and not isinstance(value, str)) else [] if (value is None) else [value]
 
     def _config(self, section_name, key=None, default=None):
         return self.config.get(section_name, {}).get(key, default) if (key) else self.config.get(section_name, {})
@@ -661,7 +661,7 @@ class AcmeManager(object):
 
     def _option_list(self, config, key):
         value = config.get(key, self._setting(key))
-        return value if (isinstance(value, collections.Iterable) and not isinstance(value, str)) else [] if (value is None) else [value]
+        return value if (isinstance(value, collections.abc.Iterable) and not isinstance(value, str)) else [] if (value is None) else [value]
 
     def _option_int(self, config, key):
         try:
