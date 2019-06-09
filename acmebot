@@ -156,7 +156,7 @@ class AcmeManager(object):
     def __init__(self):
         self.script_dir = os.path.dirname(os.path.realpath(__file__))
         self.script_name = os.path.basename(__file__)
-        self.script_version = '2.4.1'
+        self.script_version = '2.4.2'
 
         self._color_codes = {
             'black': 30,
@@ -517,6 +517,12 @@ class AcmeManager(object):
                     except PermissionError as error:
                         if (warn):
                             self._warn('Unable to set directory mode for ', dir_path, '\n', self._indent(error), '\n')
+                    try:
+                        os.chown(dir_path, self._get_user_id(self._setting('file_user')), self._get_group_id(self._setting('file_group')))
+                    except PermissionError as error:
+                        if (warn):
+                            self._warn('Unable to set directory ownership for ', dir_path, ' to ',
+                                       self._setting('file_user'), ':', self._setting('file_group'), '\n', self._indent(error), '\n')
             except Exception as error:
                 if (warn):
                     self._warn('Unable to create directory ', dir_path, '\n', self._indent(error), '\n')
