@@ -156,7 +156,7 @@ class AcmeManager(object):
     def __init__(self):
         self.script_dir = os.path.dirname(os.path.realpath(__file__))
         self.script_name = os.path.basename(__file__)
-        self.script_version = '2.4.3'
+        self.script_version = '2.4.4'
 
         self._color_codes = {
             'black': 30,
@@ -252,6 +252,9 @@ class AcmeManager(object):
         argparser.add_argument('--show-config',
                                action='store_true', dest='show_config', default=False,
                                help='Display configuration settings')
+        argparser.add_argument('--quick',
+                               action='store_true', dest='quick', default=False,
+                               help='Avoid long running operations')
         argparser.add_argument('-p', '--pass', nargs=1, default=False,
                                action='store', dest='passphrase', metavar='PASSPHRASE',
                                help='Passphrase for private keys')
@@ -2341,12 +2344,15 @@ class AcmeManager(object):
                 hold_dhparam_pem = dhparam_pem
                 hold_ecparam_pem = ecparam_pem
 
-                dhparam_size = self._option_int(key_certificates[certificate_name], 'dhparam_size')
-                if (dhparam_pem and dhparam_size and (dhparam_size != self.dhparam_size(dhparam_pem))):
-                    self._info('Diffie-Hellman parameters for ', certificate_name, ' are not ', dhparam_size, ' bits\n')
-                    dhparam_pem = None
-                if ((not dhparam_pem) and (dhparam_size)):
-                    self._status('Generating Diffie-Hellman parameters for ', certificate_name, '\n')
+                specified_dhparam_size = self._option_int(key_certificates[certificate_name], 'dhparam_size')
+                dhparam_size = min(specified_dhparam_size, 1024) if self.args.quick else specified_dhparam_size
+                if (dhparam_pem and dhparam_size):
+                    existing_dhparam_size = self.dhparam_size(dhparam_pem)
+                    if ((existing_dhparam_size != dhparam_size) and (existing_dhparam_size != specified_dhparam_size)):
+                        self._info('Diffie-Hellman parameters for ', certificate_name, ' are not ', dhparam_size, ' bits\n')
+                        dhparam_pem = None
+                if ((not dhparam_pem) and dhparam_size):
+                    self._status('Generating ', dhparam_size, ' bit Diffie-Hellman parameters for ', certificate_name, '\n')
                     dhparam_pem = self.generate_dhparam(dhparam_size)
                     if (dhparam_pem):
                         generated_params = True
@@ -2359,7 +2365,7 @@ class AcmeManager(object):
                     self._info('Elliptical curve parameters for ', certificate_name, ' are not curve ', ecparam_curve, '\n')
                     ecparam_pem = None
                 if ((not ecparam_pem) and (ecparam_curve)):
-                    self._status('Generating elliptical curve parameters for ', certificate_name, '\n')
+                    self._status('Generating ', ecparam_curve, ' elliptical curve parameters for ', certificate_name, '\n')
                     ecparam_pem = self.generate_ecparam(ecparam_curve)
                     if (ecparam_pem):
                         generated_params = True
