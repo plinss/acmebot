@@ -156,7 +156,7 @@ class AcmeManager(object):
     def __init__(self):
         self.script_dir = os.path.dirname(os.path.realpath(__file__))
         self.script_name = os.path.basename(__file__)
-        self.script_version = '2.4.4'
+        self.script_version = '2.4.5'
 
         self._color_codes = {
             'black': 30,
@@ -758,7 +758,7 @@ class AcmeManager(object):
         response, _ = self._dns_request('_{port}._{protocol}.{host}'.format(port=port, protocol=protocol, host=host), 52, name_server)
         if (response):
             return ['{} {} {} {}'.format(answer['data'][0], answer['data'][1], answer['data'][2], binascii.hexlify(answer['data'][3:]).decode('ascii'))
-                    for answer in response.answers]
+                    for answer in response.answers if (52 == answer['type'])]
         return []
 
     def _update_zone(self, updates, zone_name, zone_key, operation):
