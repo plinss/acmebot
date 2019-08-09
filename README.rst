@@ -536,6 +536,8 @@ All of these need only be present when the desired value is different from the d
   A value of ``null`` or ``false`` will result in private keys being written unencrypted.
   A value of ``true`` will cause the password to be read from the command line, the environment, a prompt, or stdin.
   A string value will be used as the passphrase without further input.
+* ``key_provided`` specifies that the private keys are provided from an external source and the tool should not modify them.
+  The default value is ``false``.
 * ``dhparam_size`` specifies the size (in bits) for custom Diffie-Hellman parameters.
   The default value is ``2048``.
   Custom Diffie-Hellman parameters can be turned off by setting this value to ``0`` or ``null``.
@@ -623,6 +625,7 @@ Example::
             "key_curve": "secp384r1",
             "key_cipher": "blowfish",
             "key_passphrase": null,
+            "key_provided": false,
             "dhparam_size": 2048,
             "ecparam_curve": "secp384r1",
             "file_user": "root",
@@ -833,6 +836,9 @@ The name of each certificate is used as the name of the certificate files.
   A value of ``null`` or ``false`` will result in private keys being written unencrypted.
   A value of ``true`` will cause the password to be read from the command line, the environment, a prompt, or stdin.
   A string value will be used as the passphrase without further input.
+* ``key_provided`` specifies that the private keys are provided from an external source and the tool should not modify them.
+  The default value is the value specified in the ``settings`` section.
+  This is useful when the same private keys are shared between multiple instances of the tool, e.g. for HPKP purposes.
 * ``expiration_days`` specifies the number of days that the backup private key should be considered valid.
   The default value is the value specified in the ``settings`` section.
   When the backup key reaches this age,
@@ -877,6 +883,7 @@ Example::
                 "key_curve": "secp384r1",
                 "key_cipher": "blowfish",
                 "key_passphrase": null,
+                "key_provided": false,
                 "expiration_days": 730,
                 "auto_rollover": false,
                 "hpkp_days": 60,
@@ -905,7 +912,7 @@ Note that a certificate configured in the ``certificates`` section is equivalent
 As such, it is an error to specify a certificate using the same name in both the ``certificates`` and ``private_keys`` sections.
 
 The private key and certificate settings are identical to those specified in the ``certificates`` section,
-except settings relevant to the private key: ``key_size``, ``key_curve``, ``key_cipher``, ``key_passphrase``, ``expiration_days``, ``auto_rollover``, ``hpkp_days``, ``pin_subdomains``, and ``hpkp_report_uri`` are specified in the private key object rather than the certificate object.
+except settings relevant to the private key: ``key_size``, ``key_curve``, ``key_cipher``, ``key_passphrase``, ``key_provided``, ``expiration_days``, ``auto_rollover``, ``hpkp_days``, ``pin_subdomains``, and ``hpkp_report_uri`` are specified in the private key object rather than the certificate object.
 The ``key_types`` setting may be specified in the certificate, private key, or both.
 
 Example::
@@ -941,6 +948,7 @@ Example::
                 "key_curve": "secp384r1",
                 "key_cipher": "blowfish",
                 "key_passphrase": null,
+                "key_provided": false,
                 "expiration_days": 730,
                 "auto_rollover": false,
                 "hpkp_days": 60,

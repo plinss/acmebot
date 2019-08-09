@@ -10,6 +10,7 @@ settings:
   key_curve: secp384r1
   key_cipher: blowfish
   key_passphrase: null
+  key_provided: false
   dhparam_size: 2048
   ecparam_curve: secp384r1
   file_user: root
@@ -180,6 +181,7 @@ certificates:
     key_curve: secp384r1
     key_cipher: blowfish
     key_passphrase:
+    key_provided: false
     expiration_days: 730
     auto_rollover: false
     hpkp_days: 30
@@ -250,6 +252,7 @@ private_keys:
     key_curve: secp384r1
     key_cipher: blowfish
     key_passphrase:
+    key_provided: false
     expiration_days: 730
     auto_rollover: false
     hpkp_days: 30
