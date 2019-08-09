@@ -1780,7 +1780,7 @@ class AcmeManager(object):
                     authorization_resources[domain_name] = authorization_resource
                     self._debug('Requesting authorization for ', domain_name, '\n')
                 else:
-                    self._debug(domain_name, ' not authorized\n')
+                    self._warn(domain_name, ' not authorized\n')
             else:
                 self._fatal('Unexpected status "', authorization_resource.body.status, '" for authorization of ', domain_name, '\n')
 
