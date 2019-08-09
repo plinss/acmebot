@@ -1694,8 +1694,11 @@ class AcmeManager(object):
             try:
                 with urllib.request.urlopen(request) as response:
                     list_bytes = response.read()
-                    with open(public_suffix_list_path, 'wb') as public_suffix_list_file:
-                        public_suffix_list_file.write(list_bytes)
+                    try:
+                        with open(public_suffix_list_path, 'wb') as public_suffix_list_file:
+                            public_suffix_list_file.write(list_bytes)
+                    except Exception as error:
+                        self._fatal('Unable to write public suffix list to ', public_suffix_list_path, '\n', error, '\n')
             except urllib.error.HTTPError as error:
                 if ((400 <= error.code) and (error.code < 500)):
                     self._warn('Unable to retrieve public suffix list from ', public_suffix_list_url, ' HTTP error: ', error.code, ' ', error.reason, '\n',
@@ -1706,9 +1709,10 @@ class AcmeManager(object):
                     self._detail('Public suffix list not modified\n')
                 else:
                     self._warn('Unable to retrieve public suffix list from ', public_suffix_list_url, ' HTTP error: ', error.code, ' ', error.reason, '\n')
+            except AcmeError as error:
+                raise error
             except Exception as error:
-                os.remove(public_suffix_list_path)
-                self._fatal('Unable to write public suffix list to ', public_suffix_list_path, '\n', error, '\n')
+                self._warn('Unable to retrieve public suffix list from ', public_suffix_list_url, '\n', error, '\n')
 
         self._public_suffixes = {}
         self._public_suffix_exceptions = {}
