@@ -250,6 +250,9 @@ class AcmeManager(object):
         argparser.add_argument('-V', '--verify',
                                action='store_true', dest='verify', default=False,
                                help='Verify certificate installation only')
+        argparser.add_argument('--register',
+                               action='store_true', dest='register', default=False,
+                               help='Register client only')
         argparser.add_argument('--export-client',
                                action='store_true', dest='export_client', default=False,
                                help='Export client key')
@@ -1647,7 +1650,7 @@ class AcmeManager(object):
                         raise Exception('Terms of service rejected.\n')
                     self._detail('Terms of service accepted.\n')
                 else:
-                    self._detail('Auto-accepting TOS: ', tos, '\n')
+                    self._status('Auto-accepting TOS: ', tos, '\n')
 
             try:
                 reg = messages.NewRegistration.from_data(email=self._account('email'))
@@ -3148,7 +3151,7 @@ class AcmeManager(object):
             pid_file.write(str(os.getpid()))
         try:
             if (not (self.args.revoke or self.args.auth or self.args.certs or self.args.tlsa or self.args.sct or self.args.ocsp or self.args.verify
-                     or self.args.export_client or self.args.show_config)):
+                     or self.args.register or self.args.export_client or self.args.show_config)):
                 self.args.auth = True
                 self.args.certs = True
                 self.args.tlsa = True
@@ -3156,7 +3159,7 @@ class AcmeManager(object):
                 self.args.ocsp = True
                 self.args.verify = True
 
-            if (self.args.revoke or self.args.auth or self.args.certs or self.args.export_client):
+            if (self.args.revoke or self.args.auth or self.args.certs or self.args.register or self.args.export_client):
                 self.connect_client()
 
             if (self.args.revoke):
