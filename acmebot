@@ -2380,7 +2380,7 @@ class AcmeManager(object):
                 hold_ecparam_pem = ecparam_pem
 
                 specified_dhparam_size = self._option_int(key_certificates[certificate_name], 'dhparam_size')
-                dhparam_size = min(specified_dhparam_size, 1024) if self.args.quick else specified_dhparam_size
+                dhparam_size = min(specified_dhparam_size, 2048) if self.args.quick else specified_dhparam_size
                 if (dhparam_pem and dhparam_size):
                     existing_dhparam_size = self.dhparam_size(dhparam_pem)
                     if ((existing_dhparam_size != dhparam_size) and (existing_dhparam_size != specified_dhparam_size)):
