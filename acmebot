@@ -159,7 +159,7 @@ class AcmeManager(object):
     def __init__(self):
         self.script_dir = os.path.dirname(os.path.realpath(__file__))
         self.script_name = os.path.basename(__file__)
-        self.script_version = '2.4.5'
+        self.script_version = '2.4.6'
         self.exit_code = 0
 
         self._color_codes = {
@@ -259,6 +259,9 @@ class AcmeManager(object):
         argparser.add_argument('--quick',
                                action='store_true', dest='quick', default=False,
                                help='Avoid long running operations')
+        argparser.add_argument('-A', '--accept',
+                               action='store_true', dest='accept', default=False,
+                               help='Automatically accept registration terms of service')
         argparser.add_argument('-p', '--pass', nargs=1, default=False,
                                action='store', dest='passphrase', metavar='PASSPHRASE',
                                help='Passphrase for private keys')
@@ -1637,7 +1640,7 @@ class AcmeManager(object):
                 self._fatal("Can't connect to ACME service.\n", error, '\n')
 
             def _accept_tos(tos):
-                if (sys.stdin.isatty()):
+                if (sys.stdin.isatty() and (not self.args.accept)):
                     self._status('ACME service has the following terms of service:\n', tos, '\n')
                     answer = input('Accept? (Y/n) ')
                     if (answer and not answer.lower().startswith('y')):
