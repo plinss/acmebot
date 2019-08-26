@@ -889,7 +889,7 @@ class AcmeManager(object):
                     if (output):
                         self._warn('Service ', service_name, ' responded to reload with:\n', output, '\n')
                 except subprocess.CalledProcessError as error:
-                    self._error('Service ', service_name, ' reload failed, code: ', error.returncode, '\n', self._indent(error.output), '\n')
+                    self._warn('Service ', service_name, ' reload failed, code: ', error.returncode, '\n', self._indent(error.output), '\n')
             else:
                 self._error('Service ', service_name, ' does not have registered reload command\n')
         return reloaded
