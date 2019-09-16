@@ -479,6 +479,15 @@ If the specified file name is not an absolute path,
 it will be searched for in the same locations,
 e.g. ``acmebot --config config.json`` will load ``./config.json``, ``/etc/acmebot/config.json``, or ``<install-dir>/config.json``.
 If the file extension is omitted, the tool will search for a file with the extensions: ``.json``, ``.yaml``, and ``.yml`` in each location.
+If the speficied file is an absolute path,
+only that location will be searched.
+
+Additional configuration files may be placed in a subdirectory named ``conf.d`` in the same directory as the configuration file.
+All files with the extensions: ``.json``, ``.yaml``, or ``.yml`` in that subdirectory will be loaded and merged into the configuration,
+overriding any settings in the main configuration file.
+For example,
+the configurtaion for each certificate may be placed in a separate file,
+while the common settings remain in the main configuration file.
 
 The configuration file must adhere to standard JSON or YAML formats.
 The examples given in this document are in JSON format, however, the equivalent structures may be expressed in YAML.

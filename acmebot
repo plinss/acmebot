@@ -50,6 +50,7 @@ import binascii
 import collections
 import datetime
 import getpass
+import glob
 import grp
 import hashlib
 import heapq
@@ -160,7 +161,7 @@ class AcmeManager(object):
     def __init__(self):
         self.script_dir = os.path.dirname(os.path.realpath(__file__))
         self.script_name = os.path.basename(__file__)
-        self.script_version = '2.5.0'
+        self.script_version = '2.5.1'
         self.exit_code = 0
 
         self._color_codes = {
@@ -439,21 +440,47 @@ class AcmeManager(object):
         OrderedLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, construct_mapping)
         return yaml.load(stream, OrderedLoader)
 
+    def _load_config_file(self, config_file_path):
+        _, extension = os.path.splitext(config_file_path)
+        try:
+            self._detail('Reading config from ', config_file_path, '\n')
+            with open(config_file_path) as config_file:
+                if ('.json' == extension):
+                    return json.load(config_file, object_pairs_hook=collections.OrderedDict)
+                return self._load_yaml(config_file, object_pairs_hook=collections.OrderedDict)
+        except Exception as error:
+            self._fatal('Error reading config file ', config_file_path, ': ', error, '\n')
+
+    def _find_configs(self, config_file_path):
+        config_dir = os.path.dirname(config_file_path)
+        file_paths = []
+        for extension in ('.json', '.yaml', '.yml'):
+            file_paths += glob.glob(os.path.join(config_dir, 'conf.d', '*' + extension))
+        return file_paths
+
+    def _merge_dicts(self, base, extra):
+        if (not isinstance(base, dict)):
+            base = collections.OrderedDict()
+        for key, value in extra.items():
+            if (isinstance(value, dict)):
+                base[key] = self._merge_dicts(base.get(key), value)
+            else:
+                base[key] = value
+        return base
+
     def _load_config(self, file_path, search_paths=[]):
+        file_path = os.path.expanduser(file_path)
         search_paths = [''] if (os.path.isabs(file_path)) else search_paths
         file_path, file_extension = os.path.splitext(file_path)
-        extensions = ['.json', '.yaml', '.yml'] if not file_extension else [file_extension]
+        extensions = ('.json', '.yaml', '.yml') if not file_extension else [file_extension]
         for search_path in search_paths:
             for extension in extensions:
                 config_file_path = os.path.join(search_path, file_path) + extension
                 if (os.path.isfile(config_file_path)):
-                    try:
-                        with open(config_file_path) as config_file:
-                            if ('.json' == extension):
-                                return (json.load(config_file, object_pairs_hook=collections.OrderedDict), os.path.abspath(config_file_path))
-                            return (self._load_yaml(config_file, object_pairs_hook=collections.OrderedDict), os.path.abspath(config_file_path))
-                    except Exception as error:
-                        self._fatal('Error reading config file ', config_file_path, ': ', error, '\n')
+                    config = self._load_config_file(config_file_path)
+                    for file_path in self._find_configs(config_file_path):
+                        config = self._merge_dicts(config, self._load_config_file(file_path))
+                    return (config, config_file_path)
         self._fatal('Config file ', file_path, file_extension, ' not found\n')
 
     def _message(self, *args):
@@ -1483,8 +1510,6 @@ class AcmeManager(object):
                 for key, value in default_section.items():
                     if (key not in self.config[section_name]):
                         self.config[section_name][key] = value
-
-        self._detail('Loaded config from: ', self.config_file_path, '\n')
 
         temp_dir = self._directory('temp') if (self._directory('temp')) else tempfile.gettempdir()
         self._makedir(temp_dir)
@@ -3131,7 +3156,8 @@ class AcmeManager(object):
                                                                           verify['protocol'], keys)
 
     def show_config(self):
-        self._status('Configuration:\n', json.dumps(self.config, indent=4), '\n')
+        self._info('Configuration:\n')
+        self._status(json.dumps(self.config, indent=4), '\n')
 
     def _process_running(self, pid_file_path):
         try:
