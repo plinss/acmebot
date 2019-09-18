@@ -967,8 +967,8 @@ class AcmeManager(object):
         return KeyData(None, None)
 
     def save_private_key(self, file_type, file_name, key_type, private_key, key_cipher_data,
-                         timestamp=None, certificate=None, chain=[], dhparam_pem=None, ecparam_pem=None):
-        with FileTransaction(file_type, self._file_path(file_type, file_name, key_type), chmod=0o640, timestamp=timestamp) as transaction:
+                         timestamp=None, certificate=None, chain=[], dhparam_pem=None, ecparam_pem=None, chmod=0o640):
+        with FileTransaction(file_type, self._file_path(file_type, file_name, key_type), chmod=chmod, timestamp=timestamp) as transaction:
             if (private_key):
                 if (key_cipher_data and not key_cipher_data.forced):
                     try:
@@ -2336,7 +2336,7 @@ class AcmeManager(object):
                     if (generated_backup_key):
                         transactions.append(self.save_private_key('backup_key', private_key_name, key_type,
                                                                   backup_keys[key_type].key, key_cipher_data,
-                                                                  timestamp=backup_keys[key_type].timestamp))
+                                                                  timestamp=backup_keys[key_type].timestamp, chmod=0o600))
                         self._add_hook('backup_key_installed', key_name=private_key_name, key_type=key_type,
                                        backup_key_file=self._file_path('backup_key', private_key_name, key_type),
                                        passphrase=key_cipher_data.passphrase if (key_cipher_data) else None)
@@ -2344,7 +2344,7 @@ class AcmeManager(object):
                             and (key_type in private_key_data.previous_keys) and private_key_data.previous_keys[key_type].key):
                         transactions.append(self.save_private_key('previous_key', private_key_name, key_type,
                                                                   private_key_data.previous_keys[key_type].key, key_cipher_data,
-                                                                  timestamp=private_key_data.previous_keys[key_type].timestamp))
+                                                                  timestamp=private_key_data.previous_keys[key_type].timestamp, chmod=0o600))
                         self._add_hook('previous_key_installed', key_name=private_key_name, key_type=key_type,
                                        previous_key_file=self._file_path('previous_key', private_key_name, key_type),
                                        passphrase=key_cipher_data.passphrase if (key_cipher_data) else None)
