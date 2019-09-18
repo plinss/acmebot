@@ -1562,7 +1562,8 @@ class AcmeManager(object):
             key_certificates = private_keys[private_key_name].get('certificates', {})
             if (not key_certificates):
                 self._fatal('No certificates defined for private key ', private_key_name, '\n')
-            certificate_key_types = set()
+            all_certificate_key_types = set()
+            private_key_types = list(self._get_key_options(private_keys[private_key_name]).keys())
             for certificate_name in key_certificates:
                 if (key_certificates[certificate_name] is None):
                     key_certificates[certificate_name] = {}
@@ -1584,7 +1585,12 @@ class AcmeManager(object):
                     overlap_host_name = self._host_in_list(host_name, overlap_hosts)
                     if (overlap_host_name):
                         self._fatal('alt_name ', host_name, ' conflicts with ', overlap_host_name, ' in certificate ', certificate_name, '\n')
-                certificate_key_types |= set(self._get_list(key_certificates[certificate_name], 'key_types', self._key_types))
+                certificate_key_types = self._get_list(key_certificates[certificate_name], 'key_types', private_key_types)
+                for key_type in certificate_key_types:
+                    if (key_type not in private_key_types):
+                        self._fatal('Certificate ', certificate_name, ' defines key type ', key_type, ' that is not present in private key\n')
+                private_keys[private_key_name]['certificates'][certificate_name]['key_types'] = certificate_key_types
+                all_certificate_key_types |= set(certificate_key_types)
                 if ('verify' in key_certificates[certificate_name]):
                     verify_list = []
                     for verify in self._get_list(key_certificates[certificate_name], 'verify'):
@@ -1608,8 +1614,9 @@ class AcmeManager(object):
                                         self._fatal('Verify host ', host_name, ' not specified in certificate ', certificate_name, '\n')
                         verify_list.append(verify)
                     private_keys[private_key_name]['certificates'][certificate_name]['verify'] = verify_list
-            key_options = self._get_key_options(private_keys[private_key_name])
-            private_keys[private_key_name]['key_types'] = [key_type for key_type in key_options if (key_type in certificate_key_types)]
+                else:
+                    private_keys[private_key_name]['certificates'][certificate_name]['verify'] = self.config['settings']['verify']
+            private_keys[private_key_name]['key_types'] = [key_type for key_type in private_key_types if (key_type in all_certificate_key_types)]
         self.config['private_keys'] = private_keys
 
     def _user_agent(self):
