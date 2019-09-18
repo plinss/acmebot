@@ -551,8 +551,9 @@ All of these need only be present when the desired value is different from the d
   The default value is ``2048``.
   Custom Diffie-Hellman parameters can be turned off by setting this value to ``0`` or ``null``.
   This value should be at least be equal to half the ``key_size``.
-* ``ecparam_curve`` speficies the curve to use for ECDHE negotiation.
-  The default value is ``"secp384r1"``.
+* ``ecparam_curve`` speficies the curve or list of curves to use for ECDHE negotiation.
+  This value may be a string or a list of strings.
+  The default value is ``["secp521r1", "secp384r1", "secp256k1"]``.
   Custom EC parameters can be turned off by setting this value to ``null``.
   You can run ``openssl ecparam -list_curves`` to find a list of available curves.
 * ``file_user`` specifies the name of the user that will own certificate and private key files.
@@ -636,7 +637,7 @@ Example::
             "key_passphrase": null,
             "key_provided": false,
             "dhparam_size": 2048,
-            "ecparam_curve": "secp384r1",
+            "ecparam_curve": ["secp521r1", "secp384r1", "secp256k1"],
             "file_user": "root",
             "file_group": "ssl-cert",
             "hpkp_days": 60,
@@ -823,7 +824,7 @@ The name of each certificate is used as the name of the certificate files.
   The default value is the value specified in the ``settings`` section.
   Custom Diffie-Hellman paramaters may be ommitted from the certificate by setting this to ``0`` or ``null``.
   The value should be at least equal to half the number of bits used for the private key.
-* ``ecparam_curve`` specified the curve used for elliptical curve paramaters.
+* ``ecparam_curve`` specified the curve or curves used for elliptical curve paramaters.
   The default value is the value specified in the ``settings`` section.
   Custom elliptical curve paramaters may be ommitted from the certificate by setting this to ``null``.
 * ``key_types`` specifies the types of keys to create for this certificate.
@@ -886,7 +887,7 @@ Example::
                 },
                 "services": ["nginx"],
                 "dhparam_size": 2048,
-                "ecparam_curve": "secp384r1",
+                "ecparam_curve": ["secp521r1", "secp384r1", "secp256k1"],
                 "key_types": ["rsa", "ecdsa"],
                 "key_size": 4096,
                 "key_curve": "secp384r1",
@@ -939,7 +940,7 @@ Example::
                         "services": ["nginx"],
                         "key_types": ["rsa"],
                         "dhparam_size": 2048,
-                        "ecparam_curve": "secp384r1",
+                        "ecparam_curve": ["secp521r1", "secp384r1", "secp256k1"],
                         "ocsp_must_staple": true,
                         "ct_submit_logs": ["google_icarus", "google_pilot"],
                         "verify": [443]

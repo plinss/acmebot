@@ -294,7 +294,7 @@ class AcmeManager(object):
                 'key_passphrase': None,
                 'key_provided': False,
                 'dhparam_size': 2048,
-                'ecparam_curve': 'secp384r1',
+                'ecparam_curve': ['secp521r1', 'secp384r1', 'secp256k1'],
                 'file_user': 'root',
                 'file_group': 'ssl-cert',
                 'hpkp_days': 60,
@@ -1224,13 +1224,14 @@ class AcmeManager(object):
                 pass
         return None
 
-    def generate_ecparam(self, ecparam_curve):
-        if (ecparam_curve):
+    def generate_ecparam(self, ecparam_curves):
+        ecparam_pem = ''
+        for ecparam_curve in ecparam_curves:
             try:
-                return subprocess.check_output(['openssl', 'ecparam', '-name', ecparam_curve], stderr=subprocess.DEVNULL).decode('ascii')
+                ecparam_pem += subprocess.check_output(['openssl', 'ecparam', '-name', ecparam_curve], stderr=subprocess.DEVNULL).decode('ascii')
             except Exception:
                 pass
-        return None
+        return ecparam_pem if ecparam_pem else None
 
     def params_present(self, file_name, dhparam_pem, ecparam_pem):
         param_file_path = self._file_path('param', file_name)
@@ -1273,16 +1274,22 @@ class AcmeManager(object):
                 self._fatal('Unable to run openssl dhparam -text\n', error, '\n')
         return 0
 
-    def ecparam_curve(self, ecparam_pem):
-        if (ecparam_pem):
-            try:
-                output = subprocess.check_output(['openssl', 'ecparam', '-text'], input=ecparam_pem.encode('ascii'), stderr=subprocess.DEVNULL)
-                match = re.search(r'ASN1 OID: ([^\s]+)\n', output.decode('ascii'))
-                if (match):
-                    return match.group(1)
-            except Exception as error:
-                self._fatal('Unable to run openssl ecparam -text\n', error, '\n')
-        return None
+    def ecparam_curves(self, ecparam_pem):
+        curves = []
+        while (ecparam_pem):
+            match = re.search(r'(-----BEGIN EC PARAMETERS-----.*?-----END EC PARAMETERS-----)(.*)', ecparam_pem, re.DOTALL)
+            if (match):
+                ecparam_pem = match.group(2)
+                try:
+                    output = subprocess.check_output(['openssl', 'ecparam', '-text'], input=match.group(1).encode('ascii'), stderr=subprocess.DEVNULL)
+                    match = re.search(r'ASN1 OID: ([^\s]+)\n', output.decode('ascii'))
+                    if (match):
+                        curves.append(match.group(1))
+                except Exception as error:
+                    self._fatal('Unable to run openssl ecparam -text\n', error, '\n')
+            else:
+                ecparam_pem = None
+        return curves if (curves) else None
 
     def load_params(self, file_name):
         try:
@@ -2431,17 +2438,17 @@ class AcmeManager(object):
                         self._error('Diffie-Hellman parameters generation failed for ', dhparam_size, ' bits\n')
                         dhparam_pem = hold_dhparam_pem
 
-                ecparam_curve = self._option(key_certificates[certificate_name], 'ecparam_curve')
-                if (ecparam_pem and ecparam_curve and (ecparam_curve != self.ecparam_curve(ecparam_pem))):
-                    self._info('Elliptical curve parameters for ', certificate_name, ' are not curve ', ecparam_curve, '\n')
+                ecparam_curves = self._option_list(key_certificates[certificate_name], 'ecparam_curve')
+                if (ecparam_pem and ecparam_curves and (ecparam_curves != self.ecparam_curves(ecparam_pem))):
+                    self._info('Elliptical curve parameters for ', certificate_name, ' are not curve ', ':'.join(ecparam_curves), '\n')
                     ecparam_pem = None
-                if ((not ecparam_pem) and (ecparam_curve)):
-                    self._status('Generating ', ecparam_curve, ' elliptical curve parameters for ', certificate_name, '\n')
-                    ecparam_pem = self.generate_ecparam(ecparam_curve)
+                if ((not ecparam_pem) and (ecparam_curves)):
+                    self._status('Generating ', ':'.join(ecparam_curves), ' elliptical curve parameters for ', certificate_name, '\n')
+                    ecparam_pem = self.generate_ecparam(ecparam_curves)
                     if (ecparam_pem):
                         generated_params = True
                     else:
-                        self._error('Elliptical curve parameters generation failed for curve ', ecparam_curve, '\n')
+                        self._error('Elliptical curve parameters generation failed for curve ', ':'.join(ecparam_curves), '\n')
                         ecparam_pem = hold_ecparam_pem
 
                 if ((dhparam_pem or ecparam_pem) and self._directory('param')
