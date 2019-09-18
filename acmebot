@@ -61,6 +61,7 @@ import re
 import shlex
 import shutil
 import socket
+import string
 import struct
 import subprocess
 import sys
@@ -714,6 +715,9 @@ class AcmeManager(object):
             host_name = host_name.strip().lower()
             domain_names.append(zone_name if ('@' == host_name) else (host_name + '.' + zone_name))
         return domain_names
+
+    def _random_string(self, length):
+        return ''.join([random.choice(string.ascii_lowercase) for _ in range(0, length)])
 
     def _reload_zone(self, zone_name, critical=True):
         if (not self._setting('reload_zone_command')):
@@ -2979,7 +2983,7 @@ class AcmeManager(object):
 
         try:
             if (host_name.startswith('*.')):
-                host_name = 'wildcard-test.' + host_name[2:]
+                host_name = 'wildcard-test-{random}.{host_name}'.format(random=self._random_string(10), host_name=host_name[2:])
             addr_info = socket.getaddrinfo(host_name, port_number, proto=socket.IPPROTO_TCP)
         except Exception as error:
             self._error('ERROR: Unable to get address for ', host_name, '\n', self._indent(error), '\n')
