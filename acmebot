@@ -288,6 +288,7 @@ class AcmeManager(object):
                 'follower_mode': False,
                 'log_level': 'debug',
                 'color_output': True,
+                'key_types': self._key_types,
                 'key_size': 4096,
                 'key_curve': 'secp384r1',
                 'key_cipher': 'blowfish',
@@ -1566,6 +1567,14 @@ class AcmeManager(object):
             del self.config['certificates']
 
         for private_key_name in private_keys:
+            for config_key in ('key_curve', 'key_cipher', 'key_passphrase', 'key_provided',
+                               'auto_rollover', 'pin_subdomains', 'hpkp_report_uri'):
+                private_keys[private_key_name][config_key] = self._option(private_keys[private_key_name], config_key)
+            for config_key in ('key_size', 'expiration_days', 'hpkp_days'):
+                private_keys[private_key_name][config_key] = self._option_int(private_keys[private_key_name], config_key)
+            for config_key in ('key_types', ):
+                private_keys[private_key_name][config_key] = self._option_list(private_keys[private_key_name], config_key)
+
             key_certificates = private_keys[private_key_name].get('certificates', {})
             if (not key_certificates):
                 self._fatal('No certificates defined for private key ', private_key_name, '\n')
@@ -1574,10 +1583,13 @@ class AcmeManager(object):
             for certificate_name in key_certificates:
                 if (key_certificates[certificate_name] is None):
                     key_certificates[certificate_name] = {}
+
                 common_name = key_certificates[certificate_name].get('common_name', certificate_name)
+                key_certificates[certificate_name]['common_name'] = common_name
+
                 if ('alt_names' not in key_certificates[certificate_name]):
                     registered_name, host_name = self._split_registered_domain(common_name)
-                    private_keys[private_key_name]['certificates'][certificate_name]['alt_names'] = {registered_name: [host_name]}
+                    key_certificates[certificate_name]['alt_names'] = {registered_name: [host_name]}
                 elif ('@' in key_certificates[certificate_name]['alt_names']):
                     key_certificates[certificate_name]['alt_names'][common_name] = key_certificates[certificate_name]['alt_names']['@']
                     del key_certificates[certificate_name]['alt_names']['@']
@@ -1592,12 +1604,21 @@ class AcmeManager(object):
                     overlap_host_name = self._host_in_list(host_name, overlap_hosts)
                     if (overlap_host_name):
                         self._fatal('alt_name ', host_name, ' conflicts with ', overlap_host_name, ' in certificate ', certificate_name, '\n')
+
                 certificate_key_types = self._get_list(key_certificates[certificate_name], 'key_types', private_key_types)
                 for key_type in certificate_key_types:
                     if (key_type not in private_key_types):
                         self._fatal('Certificate ', certificate_name, ' defines key type ', key_type, ' that is not present in private key\n')
-                private_keys[private_key_name]['certificates'][certificate_name]['key_types'] = certificate_key_types
+                key_certificates[certificate_name]['key_types'] = certificate_key_types
                 all_certificate_key_types |= set(certificate_key_types)
+
+                for config_key in ('ocsp_must_staple', ):
+                    key_certificates[certificate_name][config_key] = self._option(key_certificates[certificate_name], config_key)
+                for config_key in ('dhparam_size', ):
+                    key_certificates[certificate_name][config_key] = self._option_int(key_certificates[certificate_name], config_key)
+                for config_key in ('services', 'ecparam_curve', 'ct_submit_logs'):
+                    key_certificates[certificate_name][config_key] = self._option_list(key_certificates[certificate_name], config_key)
+
                 if ('verify' in key_certificates[certificate_name]):
                     verify_list = []
                     for verify in self._get_list(key_certificates[certificate_name], 'verify'):
@@ -1620,9 +1641,10 @@ class AcmeManager(object):
                                     if (not self._host_in_list(host_name, alt_names)):
                                         self._fatal('Verify host ', host_name, ' not specified in certificate ', certificate_name, '\n')
                         verify_list.append(verify)
-                    private_keys[private_key_name]['certificates'][certificate_name]['verify'] = verify_list
+                    key_certificates[certificate_name]['verify'] = verify_list
                 else:
-                    private_keys[private_key_name]['certificates'][certificate_name]['verify'] = self.config['settings']['verify']
+                    key_certificates[certificate_name]['verify'] = self.config['settings']['verify']
+            private_keys[private_key_name]['certificates'] = key_certificates
             private_keys[private_key_name]['key_types'] = [key_type for key_type in private_key_types if (key_type in all_certificate_key_types)]
         self.config['private_keys'] = private_keys
 

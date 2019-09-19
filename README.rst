@@ -530,7 +530,9 @@ All of these need only be present when the desired value is different from the d
   Colorized output will be suppressed on non-tty devices.
   This option may be overridden via command line options.
   The default value is ``true``.
-* ``key_size`` specifies the size (in bits) for RSA private keys.
+* ``key_types`` specifies the types of private keys to generate by default.
+  The default value is ``['rsa', 'ecdsa']``.
+  * ``key_size`` specifies the size (in bits) for RSA private keys.
   The default value is ``4096``.
   RSA certificates can be turned off by setting this value to ``0`` or ``null``.
 * ``key_curve`` specifies the curve to use for ECDSA private keys.
