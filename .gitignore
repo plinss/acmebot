@@ -2,6 +2,8 @@ etc/*
 var/*
 acme*.json
 
+.mypy_cache
+
 *.pem
 *.zip
 *.orig

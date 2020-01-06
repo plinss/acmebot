@@ -532,7 +532,7 @@ All of these need only be present when the desired value is different from the d
   The default value is ``true``.
 * ``key_types`` specifies the types of private keys to generate by default.
   The default value is ``['rsa', 'ecdsa']``.
-  * ``key_size`` specifies the size (in bits) for RSA private keys.
+* ``key_size`` specifies the size (in bits) for RSA private keys.
   The default value is ``4096``.
   RSA certificates can be turned off by setting this value to ``0`` or ``null``.
 * ``key_curve`` specifies the curve to use for ECDSA private keys.
@@ -616,6 +616,9 @@ All of these need only be present when the desired value is different from the d
 * ``acme_directory_url`` specifies the primary URL for the ACME service.
   The default value is ``"https://acme-v02.api.letsencrypt.org/directory"``, the Let's Encrypt production API.
   You can substitute the URL for Let's Encrypt's staging environment or another certificate authority.
+* ``acme_directory_verify_ssl`` specifies whether or not to verify the certificate of the ACME service.
+  The default value is ``True``.
+  Setting this to ``False`` is not recommneded, but may be necessary in environments using a private ACME server.
 * ``reload_zone_command`` specifies the command to execute to reload local DNS zone information.
   When using `bindtool`_ the ``"reload-zone.sh"`` script provides this service.
   If not using local DNS updates, you may set this to ``null`` to avoid warnings.

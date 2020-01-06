@@ -161,7 +161,7 @@ class AcmeManager(object):
     def __init__(self):
         self.script_dir = os.path.dirname(os.path.realpath(__file__))
         self.script_name = os.path.basename(__file__)
-        self.script_version = '2.5.1'
+        self.script_version = '2.6.0'
         self.exit_code = 0
 
         self._color_codes = {
@@ -318,6 +318,7 @@ class AcmeManager(object):
                 'min_run_delay': 300,
                 'max_run_delay': 3600,
                 'acme_directory_url': 'https://acme-v02.api.letsencrypt.org/directory',
+                'acme_directory_verify_ssl': True,
                 'reload_zone_command': '/etc/bind/reload-zone.sh',
                 'nsupdate_command': '/usr/bin/nsupdate',
                 'public_suffix_list_url': 'https://publicsuffix.org/list/public_suffix_list.dat',
@@ -1696,14 +1697,15 @@ class AcmeManager(object):
 
         if (registration):
             try:
-                network = client.ClientNetwork(self.client_key, account=registration, user_agent=self._user_agent())
+                network = client.ClientNetwork(self.client_key, account=registration, user_agent=self._user_agent(),
+                                               verify_ssl=self._setting('acme_directory_verify_ssl'))
                 self.acme_client = client.BackwardsCompatibleClientV2(network, self.client_key, self._setting('acme_directory_url'))
             except Exception as error:
                 self._fatal("Can't connect to ACME service.\n", error, '\n')
         else:
             self._detail('Registering client\n')
             try:
-                network = client.ClientNetwork(self.client_key, user_agent=self._user_agent())
+                network = client.ClientNetwork(self.client_key, user_agent=self._user_agent(), verify_ssl=self._setting('acme_directory_verify_ssl'))
                 self.acme_client = client.BackwardsCompatibleClientV2(network, self.client_key, self._setting('acme_directory_url'))
             except Exception as error:
                 self._fatal("Can't connect to ACME service.\n", error, '\n')
