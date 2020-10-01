@@ -2201,7 +2201,7 @@ class AcmeManager(object):
                 authorizations = []
                 for url in body.authorizations:
                     try:
-                        authorizations.append(self.acme_client.client._authzr_from_response(self.acme_client.client.net.get(url), uri=url))
+                        authorizations.append(self.acme_client.client._authzr_from_response(self.acme_client.client._post_as_get(url), uri=url))
                     except Exception as error:
                         self._error('Unable to request authorization for ', domain_name, '\n', self._indent(error), '\n')
                         continue
@@ -2263,7 +2263,7 @@ class AcmeManager(object):
         return key_options
 
     def _poll_order(self, order):
-        response = self.acme_client.net.get(order.uri)
+        response = self.acme_client._post_as_get(order.uri)
         body = messages.Order.from_json(response.json())
         if body.error is not None:
             raise body.error
