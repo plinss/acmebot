@@ -319,7 +319,7 @@
             },
             "services": ["<service-name>"],
             "tlsa_records": {
-                "zone-name": [
+                "<zone-name>": [
                     "<host-name>",
                     {
                         "host": "<host-name>",
