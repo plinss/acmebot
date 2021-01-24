@@ -1680,6 +1680,8 @@ class AcmeManager(object):
         if (default_verify):
             verify_list = []
             for verify in default_verify:
+                if (verify is None):
+                    continue
                 if (isinstance(verify, int)):
                     verify = {'port': verify, 'starttls': None, 'protocol': None}
                 elif (isinstance(verify, dict)):
@@ -1773,6 +1775,8 @@ class AcmeManager(object):
                 if ('verify' in key_certificates[certificate_name]):
                     verify_list = []
                     for verify in self._get_list(key_certificates[certificate_name], 'verify'):
+                        if (verify is None):
+                            continue
                         if (isinstance(verify, int)):
                             verify = {'port': verify, 'starttls': None, 'protocol': None}
                         elif (isinstance(verify, dict)):
@@ -3334,6 +3338,8 @@ class AcmeManager(object):
                             continue
 
                         for verify in verify_list:
+                            if (not verify.get('port')):
+                                continue
                             if ('key_types' in verify):
                                 if (key_type not in self._get_list(verify, 'key_types')):
                                     continue
