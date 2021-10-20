@@ -10,7 +10,7 @@ DIR=${ACMEBOT%/*}
 
 pushd ${DIR} > /dev/null
 /usr/bin/git fetch &> /dev/null
-LOG="$(/usr/bin/git log HEAD..origin/master)"
+LOG="$(/usr/bin/git log HEAD..origin/main)"
 if [[ ${LOG} ]] ; then
     echo "acmebot update available"
     echo
