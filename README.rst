@@ -23,7 +23,7 @@ the tool can also maintain associated HPKP headers and TLSA (DANE) records.
 
 
 Master/Follower Mode
------------------
+--------------------
 
 This tool separates the authorization (domain validation) and certificate issuance processes allowing one machine to maintain authorizations (the master),
 while another machine issues certificates (the follower).
@@ -1758,7 +1758,7 @@ You may wish to run the tool without the input file first to verify the private 
 
 
 Master/Follower Setup
-==================
+=====================
 
 In some circumstances, it is useful to run the tool in a master/follower configuration.
 In this setup, the master performs domain authorizations
