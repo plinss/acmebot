@@ -287,6 +287,7 @@ class AcmeManager(object):
 
         self.config = {'settings': {'color_output': True}}
         self.config, self.config_file_path = self._load_config(self.args.config_path, ('.', os.path.join('/etc', self.script_name), self.script_dir))
+        self._failed_auth = set()
         self._key_types = ('rsa', 'ecdsa')
         self._config_defaults = {
             'settings': {
@@ -2155,6 +2156,8 @@ class AcmeManager(object):
             authorization_resources[domain_name] = authorization_resource
             attempts[authorization_resource] += 1
             if (messages.STATUS_VALID == authorization_resource.body.status):
+                if (domain_name in self._failed_auth):
+                    self._failed_auth.remove(domain_name)
                 self._debug('Authorization received\n')
                 continue
             elif (messages.STATUS_INVALID == authorization_resource.body.status):
@@ -2194,8 +2197,13 @@ class AcmeManager(object):
 
         for domain_name in failed:
             self._error('Authorization failed for ', domain_name, '\n', code=ErrorCode.AUTH)
+            self._failed_auth.add(domain_name)
         for domain_name in exhausted:
             self._warn('Authorization timed out for ', domain_name, '\n', code=ErrorCode.AUTH)
+            self._failed_auth.add(domain_name)
+
+        if ((ErrorCode.AUTH == self.exit_code) and (not self._failed_auth)):  # clear auth error if nothing failed
+            self.exit_code = ErrorCode.NONE
 
         order.update(authorizations=[authorization_resource for authorization_resource in authorization_resources.values()])
 
