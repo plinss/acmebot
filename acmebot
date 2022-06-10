@@ -3395,6 +3395,9 @@ class AcmeManager(object):
     def run(self):
         self._validate_config()
         self._log('\n', self.script_name, ' executed at ', str(datetime.datetime.now()), '\n')
+        if (self.args.show_config):
+            self.show_config()
+            return
         pid_file_path = os.path.join(self._directory('pid'), self.script_name + '.pid')
         if (self.args.random_wait):
             delay_seconds = min(random.randrange(min(self._setting_int('min_run_delay'), self._setting_int('max_run_delay')),
@@ -3452,8 +3455,6 @@ class AcmeManager(object):
                 self.verify_certificate_installation(self.args.private_key_names)
             if (self.args.export_client):
                 self.export_client_key()
-            if (self.args.show_config):
-                self.show_config()
             self.disconnect_client()
         finally:
             os.remove(pid_file_path)
