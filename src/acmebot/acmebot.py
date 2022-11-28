@@ -4,33 +4,7 @@
 #
 # To install on Debian:
 # apt-get install build-essential libssl-dev libffi-dev python3-dev python3-pip
-# pip3 install -r requirements.txt
-
-
-def verify_requirements():
-    import os
-    import pkg_resources
-    import re
-    requirements_file_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'requirements.txt')
-    if (os.path.exists(requirements_file_path)):
-        requirements_met = True
-        with open(requirements_file_path, 'r') as requirements_file:
-            requirements = [line for line in requirements_file.read().split('\n') if (not line.strip().startswith('-'))]
-            for requirement in pkg_resources.parse_requirements(requirements):
-                try:
-                    distribution = pkg_resources.get_distribution(requirement.project_name)
-                    if (distribution not in requirement):
-                        print('Package', requirement.project_name, 'version', distribution.version, 'is not supported')
-                        requirements_met = False
-                except Exception:
-                    print('Package', requirement.project_name, 'is not installed')
-                    requirements_met = False
-        if (not requirements_met):
-            print('Run "pip3 install -r {path}" to complete installation'.format(path=requirements_file_path))
-            exit()
-
-
-verify_requirements()
+# pip3 install acmebot
 
 
 import argparse
@@ -146,27 +120,12 @@ class FileTransaction(object):
 
 
 class AcmeManager(object):
-    @classmethod
-    def Run(cls):
-        exit_code = ErrorCode.EXCEPTION
-        manager = None
-        try:
-            manager = cls()
-            manager.run()
-        except AcmeError:
-            pass
-        if (manager):
-            exit_code = manager.exit_code
-            try:
-                del manager
-            except Exception:
-                pass
-        return exit_code.value
 
     def __init__(self):
-        self.script_dir = os.path.dirname(os.path.realpath(__file__))
-        self.script_name = os.path.basename(__file__)
-        self.script_version = '2.8.0'
+        script_entry = sys.argv[0]
+        self.script_dir = os.path.dirname(os.path.realpath(script_entry))
+        self.script_name = os.path.basename(script_entry)
+        self.script_version = pkg_resources.get_distribution('acmebot').version
         self.exit_code = ErrorCode.NONE
 
         self._color_codes = {
@@ -3473,7 +3432,3 @@ def debug_hook(type, value, tb):
         print()
         # ...then start the debugger in post-mortem mode.
         pdb.pm()
-
-
-if __name__ == '__main__':      # called from the command line
-    sys.exit(AcmeManager.Run())

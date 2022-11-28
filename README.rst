@@ -145,19 +145,14 @@ Wildcard certrificates may be issued when using the V2 API.
 Installation
 ============
 
-Requires Python 3.4+ and the acme and py3dns packages.
+Requires Python 3.7+ and the OpenSSL support.
 
-On Debian Jessie, these can be installed via::
-
-    sudo apt-get install build-essential libssl-dev libffi-dev python3-dev python3-pip
-    sudo pip3 install -r requirements.txt
-
-On Debian Stretch::
+On Debian Stretch and later::
 
     sudo apt-get install python3-pip libssl-dev libffi-dev
-    sudo pip3 install -r requirements.txt
+    sudo pip3 install acmebot
 
-Clone this repository or download the ``acmebot`` file and install it on your server.
+You may want to create a virtual environment and install acmebot there.
 Copy either the ``acmebot.example.json`` file or the ``acmebot.example.yaml`` file to ``acmebot.json`` (or ``acmebot.yaml``) and edit the configuration options.
 The configuration file can be placed in the current directory that the tool is run from,
 the /etc/acmebot directory,

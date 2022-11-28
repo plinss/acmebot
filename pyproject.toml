@@ -1,0 +1,72 @@
+[build-system]
+requires = ['setuptools', 'setuptools_scm']
+build-backend = 'setuptools.build_meta'
+
+
+[project]
+name = 'acmebot'
+description = 'ACME protocol automatic certitificate manager'
+readme = 'README.rst'
+requires-python = '>=3.7'
+dependencies = [
+	'appdirs>=1.4.3',
+	'pyparsing>=2.2.0',
+	'packaging>=16.8',
+	'pyOpenSSL>=17.5.0,<20.0.0',
+	'py3dns>=3.1.0',
+	'cryptography>=2.1.4,<36.0.0',
+	'asn1crypto>=0.24.0',
+	'acme>=0.25.1,<1.19.0',
+	'PyYAML>=3.1',
+]
+dynamic = ['version']
+
+
+[[project.authors]]
+name = 'Peter Linss'
+email = 'peter@linss.com'
+
+
+[project.urls]
+homepage = 'https://acmebot.org'
+
+
+[project.scripts]
+acmebot = "acmebot:run"
+
+
+[project.optional-dependencies]
+dev = [
+	'types-PyYAML',
+	'mypy',
+	'flake8',
+	'flake8-annotations',
+	'flake8-bandit',
+	'flake8-bugbear',
+	'flake8-commas',
+	'flake8-comprehensions',
+	'flake8-continuation',
+	'flake8-datetimez',
+	'flake8-docstrings',
+	'flake8-import-order',
+	'flake8-literal',
+	'flake8-modern-annotations',
+	'flake8-noqa',
+	'flake8-pyproject',
+	'flake8-requirements',
+	'flake8-typechecking-import',
+	'flake8-use-fstring',
+	'pep8-naming',
+]
+
+
+[tool.setuptools_scm]
+
+
+[tool.flake8]
+ignore = ['D107', 'D401', 'W503', 'ANN002', 'ANN003', 'ANN101', 'ANN102', 'ANN401', 'FS003', 'S110']
+max-line-length = 120
+
+
+[tool.mypy]
+mypy_path = 'stubs'

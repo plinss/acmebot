@@ -1,0 +1,119 @@
+---
+image: python:3.7
+
+
+stages:
+  - test
+  - package
+  - deploy
+
+
+# flake8:
+#   stage: lint
+#   before_script:
+#     - source .gitlab-ci.env
+#     - pip install -e ".[dev]"
+#   script:
+#     - flake8 ${PACKAGE_NAME}
+
+
+# mypy:
+#   stage: lint
+#   before_script:
+#     - source .gitlab-ci.env
+#     - pip install -e ".[dev]"
+#   script:
+#     - mypy ${PACKAGE_NAME}
+
+
+test_3.7:
+  stage: test
+  image: python:3.7
+  before_script:
+    - source .gitlab-ci.env
+    - pip install -e ".[test]"
+    - chmod a+x test.py
+  script:
+    - ./test.py
+  rules:
+    - exists:
+        - test.py
+
+
+test_3.8:
+  stage: test
+  image: python:3.8
+  before_script:
+    - source .gitlab-ci.env
+    - pip install -e ".[test]"
+    - chmod a+x test.py
+  script:
+    - ./test.py
+  rules:
+    - exists:
+        - test.py
+
+
+test_3.9:
+  stage: test
+  image: python:3.9
+  before_script:
+    - source .gitlab-ci.env
+    - pip install -e ".[test]"
+    - chmod a+x test.py
+  script:
+    - ./test.py
+  rules:
+    - exists:
+        - test.py
+
+
+test_3.10:
+  stage: test
+  image: python:3.10
+  before_script:
+    - source .gitlab-ci.env
+    - pip install -e ".[test]"
+    - chmod a+x test.py
+  script:
+    - ./test.py
+  rules:
+    - exists:
+        - test.py
+
+
+test_3.11:
+  stage: test
+  image: python:3.11
+  before_script:
+    - source .gitlab-ci.env
+    - pip install -e ".[test]"
+    - chmod a+x test.py
+  script:
+    - ./test.py
+  rules:
+    - exists:
+        - test.py
+
+
+package:
+  stage: package
+  image: docker.linss.com/docker-images/python-build:main
+  script:
+    - python -m build --no-isolation --outdir dist
+  artifacts:
+    paths:
+      - dist
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9-\.]+)?$/'
+
+
+deploy:
+  stage: deploy
+  before_script:
+    - source .gitlab-ci.env
+    - pip install --upgrade wheel twine
+  script:
+    - python -m twine upload --username __token__ --password ${PYPI_API_TOKEN} --non-interactive --disable-progress-bar --repository-url ${PYPI_REPOSITORY_URL} dist/*
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9-\.]+)?$/'

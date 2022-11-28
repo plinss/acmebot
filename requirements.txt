@@ -1,9 +1,0 @@
-appdirs>=1.4.3
-pyparsing>=2.2.0
-packaging>=16.8
-pyOpenSSL>=17.5.0,<20.0.0
-py3dns>=3.1.0
-cryptography>=2.1.4,<36.0.0
-asn1crypto>=0.24.0
-acme>=0.25.1,<1.19.0
-PyYAML>=3.1
