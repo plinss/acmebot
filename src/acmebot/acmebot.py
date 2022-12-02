@@ -3259,8 +3259,8 @@ class AcmeManager(object):
                         self._error('ERROR: No TLSA records match ', key_type.upper(), ' certificate "',
                                     installed_certificate.get_subject().commonName, '" on ', host_desc, '\n', code=ErrorCode.VERIFY)
 
-                if (protocol_info):
-                    if ('public_key_pins' in protocol_info):
+                if (protocol):
+                    if ('public_key_pins' in (protocol_info or {})):
                         for pin_key_type, pin_key_name, pin_key_purpose, pin_key in keys:
                             digests = {'sha256': self._public_key_digest(pin_key, 'sha256'), 'sha512': self._public_key_digest(pin_key, 'sha512')}
                             for pin in protocol_info['public_key_pins']:
