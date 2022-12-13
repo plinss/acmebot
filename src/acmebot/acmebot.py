@@ -885,20 +885,25 @@ class AcmeManager(object):
                 self._warn('Failed to reload zone ', zone_name, '\n', self._indent(error), '\n')
 
     def _dns_request(self, name, type, name_server=None):
-        try:
-            request = DNS.Request(server=name_server) if (name_server) else DNS.Request()
-            response = request.req(name=name, qtype=type, protocol='tcp')
-            attempt_count = 9
-            while (('SERVFAIL' == response.header['status']) and (0 < attempt_count)):
-                time.sleep(5)
+        attempt_count = 9
+        request = DNS.Request(server=name_server) if (name_server) else DNS.Request()
+        while (True):
+            try:
                 response = request.req(name=name, qtype=type, protocol='tcp')
+                if ('SERVFAIL' == response.header['status']):
+                    raise Exception('Server failure')
+                if ('NOERROR' == response.header['status']):
+                    return (response, None)
+                return (None, response.header['status'])
+            except Exception as error:
                 attempt_count -= 1
-            if ('NOERROR' == response.header['status']):
-                return (response, None)
-            return (None, response.header['status'])
-        except Exception as error:
-            self._error('DNS Error: ', error, '; requesting ', str(type), ' record for ', name, ((' @' + name_server) if (name_server) else ''), '\n',
-                        code=ErrorCode.DNS)
+                if (0 < attempt_count):
+                    self._detail(f'DNS Error: {error}; retries {attempt_count}', '\n')
+                    time.sleep(5)
+                else:
+                    self._error(f'DNS Error: {error}; requesting {type}, record for {name}', ((f' @{name_server}') if (name_server) else ''), '\n',
+                                code=ErrorCode.DNS)
+                    break
         return (None, None)
 
     def _get_primary_name_server(self, zone_name):
