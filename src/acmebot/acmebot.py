@@ -541,9 +541,34 @@ class AcmeManager(object):
                         'start': '2022-01-01T00:00:00Z',
                         'end': '2023-01-07T00:00:00Z',
                     },
+
+                    {
+                        'log_id': self._hex_to_base64('B7:3E:FB:24:DF:9C:4D:BA:75:F2:39:C5:BA:58:F4:6C:5D:FC:42:CF:7A:9F:35:C4:9E:1D:09:81:25:ED:B4:99'),
+                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEsz0OeL7jrVxEXJu+o4QWQYLKyokXHiPOOKVUL3/TNFFquVzDSer7kZ3gijxzBp98ZTgRgMSaWgCmZ8OD74mFUQ==',
+                        'url': 'https://oak.ct.letsencrypt.org/2023/',
+                        'start': '2023-01-01T00:00Z',
+                        'end': '2024-01-07T00:00Z',
+                    },
+                    {
+                        'log_id': self._hex_to_base64('3B:53:77:75:3E:2D:B9:80:4E:8B:30:5B:06:FE:40:3B:67:D8:4F:C3:F4:C7:BD:00:0D:2D:72:6F:E1:FA:D4:17'),
+                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEVkPXfnvUcre6qVG9NpO36bWSD+pet0Wjkv3JpTyArBog7yUvuOEg96g6LgeN5uuk4n0kY59Gv5RzUo2Wrqkm/Q==',
+                        'url': 'https://oak.ct.letsencrypt.org/2024h1/',
+                        'start': '2023-12-20T00:00Z',
+                        'end': '2024-07-20T00:00Z',
+                    },
+                    {
+                        'log_id': self._hex_to_base64('3F:17:4B:4F:D7:22:47:58:94:1D:65:1C:84:BE:0D:12:ED:90:37:7F:1F:85:6A:EB:C1:BF:28:85:EC:F8:64:6E'),
+                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE13PWU0fp88nVfBbC1o9wZfryUTapE4Av7fmU01qL6E8zz8PTidRfWmaJuiAfccvKu5+f81wtHqOBWa+Ss20waA==',
+                        'url': 'https://oak.ct.letsencrypt.org/2024h2/',
+                        'start': '2024-06-20T00:00Z',
+                        'end': '2025-01-20T00:00Z',
+                    },
                 ],
             }
         }
+
+    def _hex_to_base64(self, hex: str) -> str:
+        return base64.b64encode(binascii.unhexlify(hex.replace(':', '')))
 
     def _load_yaml(self, stream, object_pairs_hook=dict):
         class OrderedLoader(yaml.SafeLoader):
