@@ -335,18 +335,18 @@ class AcmeManager(object):
                 'nginx': 'add_header Public-Key-Pins "{header}" always;\n'
             },
             'services': {
-                'apache': 'systemctl reload apache2',
-                'coturn': 'systemctl restart coturn',
-                'dovecot': 'systemctl restart dovecot',
-                'etherpad': 'systemctl restart etherpad',
-                'mysql': 'systemctl reload mysql',
-                'nginx': 'systemctl reload nginx',
-                'postfix': 'systemctl reload postfix',
-                'postgresql': 'systemctl reload postgresql',
-                'prosody': 'systemctl restart prosody',
-                'slapd': 'systemctl restart slapd',
-                'synapse': 'systemctl restart matrix-synapse',
-                'znc': 'systemctl restart znc'
+                'apache': 'systemctl reload-or-restart apache2',
+                'coturn': 'systemctl reload-or-restart coturn',
+                'dovecot': 'systemctl reload-or-restart dovecot',
+                'etherpad': 'systemctl reload-or-restart etherpad',
+                'mysql': 'systemctl reload-or-restart mysql',
+                'nginx': 'systemctl reload-or-restart nginx',
+                'postfix': 'systemctl reload-or-restart postfix',
+                'postgresql': 'systemctl reload-or-restart postgresql',
+                'prosody': 'systemctl reload-or-restart prosody',
+                'slapd': 'systemctl reload-or-restart slapd',
+                'synapse': 'systemctl reload-or-restart matrix-synapse',
+                'znc': 'systemctl reload-or-restart znc'
             },
             'ct_logs': {
                 'google_argon': [
