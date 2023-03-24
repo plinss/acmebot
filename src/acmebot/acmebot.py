@@ -568,7 +568,7 @@ class AcmeManager(object):
         }
 
     def _hex_to_base64(self, hex: str) -> str:
-        return base64.b64encode(binascii.unhexlify(hex.replace(':', '')))
+        return base64.b64encode(binascii.unhexlify(hex.replace(':', ''))).decode('ascii')
 
     def _load_yaml(self, stream, object_pairs_hook=dict):
         class OrderedLoader(yaml.SafeLoader):
