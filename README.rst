@@ -559,6 +559,12 @@ All of these need only be present when the desired value is different from the d
 * ``file_group`` speficies the name of the group that will own certificate and private key files.
   The default value is ``"ssl-cert"``.
   Note that this tool must run as root, or another user that has rights to set the file ownership to this group.
+* ``log_user`` specifies the name of the user that will own log files.
+  The default value is ``"root"``.
+  Note that this tool must run as root, or another user that has rights to set the file ownership to this user.
+* ``log_group`` speficies the name of the group that will own log files.
+  The default value is ``"adm"``.
+  Note that this tool must run as root, or another user that has rights to set the file ownership to this group.
 * ``hpkp_days`` specifies the number of days that HPKP pins should be cached for.
   The default value is ``60``.
   HPKP pin files can be turned off by setting this value to ``0`` or ``null``.

@@ -263,6 +263,8 @@ class AcmeManager(object):
                 'ecparam_curve': ['secp521r1', 'secp384r1', 'secp256k1'],
                 'file_user': 'root',
                 'file_group': 'ssl-cert',
+                'log_user': 'root',
+                'log_group': 'adm',
                 'hpkp_days': 60,
                 'pin_subdomains': True,
                 'hpkp_report_uri': None,
@@ -686,12 +688,13 @@ class AcmeManager(object):
         if (hasattr(self, 'config') and self._directory('log') and self._file_name('log') and self._setting('log_level')):
             log_file_path = self._file_path('log', self.script_name)
             try:
-                with self._open_file(log_file_path, mode='a+', chmod=0o640, warn=False) as log_file:
+                with self._open_file(log_file_path, mode='a+', chmod=0o640, warn=False,
+                                     user=self._setting('log_user'), group=self._setting('log_group')) as log_file:
                     log_file.write(self._message(*args))
             except Exception:
                 sys.stderr.write('Unable to write to log file ' + log_file_path + '\n')
 
-    def _makedir(self, dir_path, chmod=None, warn=True):
+    def _makedir(self, dir_path, *, chmod=None, warn=True, user=None, group=None):
         if (not os.path.isdir(dir_path)):
             try:
                 os.makedirs(dir_path)
@@ -708,7 +711,7 @@ class AcmeManager(object):
                         if (warn):
                             self._error('Unable to set directory mode for ', dir_path, '\n', self._indent(error), '\n', code=ErrorCode.PERMISSION)
                     try:
-                        os.chown(dir_path, self._get_user_id(self._setting('file_user')), self._get_group_id(self._setting('file_group')))
+                        os.chown(dir_path, self._get_user_id(user or self._setting('file_user')), self._get_group_id(group or self._setting('file_group')))
                     except PermissionError as error:
                         if (warn):
                             self._error('Unable to set directory ownership for ', dir_path, ' to ',
@@ -718,11 +721,14 @@ class AcmeManager(object):
                 if (warn):
                     self._error('Unable to create directory ', dir_path, '\n', self._indent(error), '\n', code=ErrorCode.PERMISSION)
 
-    def _open_file(self, file_path, mode='r', chmod=0o666, warn=True):
+    def _open_file(self, file_path, *, mode='r', chmod=0o666, warn=True, user=None, group=None):
         def opener(file_path, flags):
-            return os.open(file_path, flags, mode=chmod)
+            file = os.open(file_path, flags, mode=chmod)
+            if (user or group):
+                os.chown(file_path, self._get_user_id(user or self._setting('file_user')), self._get_group_id(group or self._setting('file_group')))
+            return file
         if ((('w' in mode) or ('a' in mode)) and isinstance(file_path, str)):
-            self._makedir(os.path.dirname(file_path), chmod=chmod, warn=warn)
+            self._makedir(os.path.dirname(file_path), chmod=chmod, warn=warn, user=user, group=group)
         return open(file_path, mode, opener=opener)
 
     def _archive_file(self, file_type, file_path, archive_name='', archive_date=datetime.datetime.now()):
@@ -731,7 +737,7 @@ class AcmeManager(object):
                                              archive_name,
                                              archive_date.strftime('%Y_%m_%d_%H%M%S') if (archive_date) else '',
                                              file_type + '.' + os.path.basename(file_path))
-            self._makedir(os.path.dirname(archive_file_path), 0o640)
+            self._makedir(os.path.dirname(archive_file_path), chmod=0o640)
             shutil.move(file_path, archive_file_path)
             self._detail('Archived ', file_path, ' as ', archive_file_path, '\n')
             return (file_path, archive_file_path)
@@ -749,9 +755,9 @@ class AcmeManager(object):
         except Exception:
             return -1
 
-    def _rename_file(self, old_file_path, new_file_path, chmod=None, timestamp=None):
+    def _rename_file(self, old_file_path, new_file_path, *, chmod=None, timestamp=None, user=None, group=None):
         if (os.path.isfile(old_file_path)):
-            self._makedir(os.path.dirname(new_file_path), chmod)
+            self._makedir(os.path.dirname(new_file_path), chmod=chmod)
             shutil.move(old_file_path, new_file_path)
             if (chmod):
                 try:
@@ -764,7 +770,7 @@ class AcmeManager(object):
                 except PermissionError as error:
                     self._error('Unable to set file time for ', new_file_path, '\n', self._indent(error), '\n', code=ErrorCode.PERMISSION)
             try:
-                os.chown(new_file_path, self._get_user_id(self._setting('file_user')), self._get_group_id(self._setting('file_group')))
+                os.chown(new_file_path, self._get_user_id(user or self._setting('file_user')), self._get_group_id(group or self._setting('file_group')))
             except PermissionError as error:
                 self._error('Unable to set file ownership for ', new_file_path, ' to ',
                             self._setting('file_user'), ':', self._setting('file_group'), '\n', self._indent(error), '\n', code=ErrorCode.PERMISSION)
@@ -1833,7 +1839,7 @@ class AcmeManager(object):
 
     def connect_client(self):
         resource_dir = os.path.join(self.script_dir, self._directory('resource'))
-        self._makedir(resource_dir, 0o600)
+        self._makedir(resource_dir, chmod=0o600)
         generated_client_key = False
         client_key_path = os.path.join(resource_dir, 'client_key.json')
         if (os.path.isfile(client_key_path)):
@@ -1915,7 +1921,7 @@ class AcmeManager(object):
         if (hasattr(self, '_public_suffixes')):
             return
         resource_dir = os.path.join(self.script_dir, self._directory('resource'))
-        self._makedir(resource_dir, 0o600)
+        self._makedir(resource_dir, chmod=0o600)
         public_suffix_list_path = os.path.join(resource_dir, 'public_suffix_list.dat')
         fetch = True
         last_update = None
@@ -2043,7 +2049,7 @@ class AcmeManager(object):
                         challenge_file_path = os.path.join(http_challenge_directory, challenge.chall.encode('token'))
                         self._debug('Setting http acme-challenge for ', domain_name, ' in file ', challenge_file_path, '\n')
                         try:
-                            with self._open_file(challenge_file_path, 'w', 0o644) as challenge_file:
+                            with self._open_file(challenge_file_path, mode='w', chmod=0o644) as challenge_file:
                                 challenge_file.write(challenge.validation(self.client_key))
                             challenge_http_responses[domain_name] = challenge_file_path
                             self._add_hook('set_http_challenge', domain=domain_name, challenge_file=challenge_http_responses[domain_name])
@@ -2067,7 +2073,7 @@ class AcmeManager(object):
                         challenge_dns_responses[zone_name] = zone_responses
                 else:
                     try:
-                        with self._open_file(self._file_path('challenge', zone_name), 'w', 0o644) as challenge_file:
+                        with self._open_file(self._file_path('challenge', zone_name), mode='w', chmod=0o644) as challenge_file:
                             json.dump({domain_name: response.response for domain_name, response in zone_responses.items()}, challenge_file)
                         challenge_dns_responses[zone_name] = zone_responses
                     except Exception as error:
@@ -3408,7 +3414,7 @@ class AcmeManager(object):
         else:
             if (self._process_running(pid_file_path)):
                 self._fatal('Client already running\n')
-        with self._open_file(pid_file_path, 'w') as pid_file:
+        with self._open_file(pid_file_path, mode='w') as pid_file:
             pid_file.write(str(os.getpid()))
         try:
             if (not (self.args.revoke or self.args.auth or self.args.certs or self.args.tlsa or self.args.sct or self.args.ocsp or self.args.verify
