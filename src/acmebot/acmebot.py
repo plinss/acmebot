@@ -619,7 +619,7 @@ class AcmeManager(object):
                 config_file_path = os.path.join(search_path, file_path) + extension
                 if (os.path.isfile(config_file_path)):
                     config = self._load_config_file(config_file_path)
-                    for file_path in self._find_configs(config_file_path):
+                    for file_path in sorted(self._find_configs(config_file_path)):
                         config = self._merge_dicts(config, self._load_config_file(file_path))
                     return (config, config_file_path)
         self._fatal('Config file ', file_path, file_extension, ' not found\n', code=ErrorCode.CONFIG)
