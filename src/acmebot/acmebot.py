@@ -83,6 +83,18 @@ class ErrorCode(enum.IntEnum):
     VERIFY = 12
 
 
+class WarningCode(enum.IntEnum):
+    NONE = 0
+    GENERAL = 100
+    CONFIG = 101
+    KEY = 102
+    DNS = 103
+    AUTH = 104
+    SERVICE = 105
+    SCT = 106
+    OCSP = 107
+
+
 class AcmeError(Exception):
     pass
 
@@ -119,14 +131,15 @@ class FileTransaction(object):
         self.file.write(data)
 
 
-class AcmeManager(object):
+class AcmeManager:
 
     def __init__(self):
         script_entry = sys.argv[0]
         self.script_dir = os.path.dirname(os.path.realpath(script_entry))
         self.script_name = os.path.basename(script_entry)
         self.script_version = pkg_resources.get_distribution('acmebot').version
-        self.exit_code = ErrorCode.NONE
+        self.error_code = ErrorCode.NONE
+        self.warning_code = WarningCode.NONE
 
         self._color_codes = {
             'black': 30,
@@ -265,6 +278,7 @@ class AcmeManager(object):
                 'file_group': 'ssl-cert',
                 'log_user': 'root',
                 'log_group': 'adm',
+                'warning_exit_code': False,
                 'hpkp_days': 60,
                 'pin_subdomains': True,
                 'hpkp_report_uri': None,
@@ -569,6 +583,14 @@ class AcmeManager(object):
             }
         }
 
+    @property
+    def exit_code(self) -> int:
+        if (ErrorCode.NONE != self.error_code):
+            return self.error_code.value
+        if ((WarningCode.NONE != self.warning_code) and self._setting('warning_exit_code')):
+            return self.warning_code.value
+        return 0
+
     def _hex_to_base64(self, hex: str) -> str:
         return base64.b64encode(binascii.unhexlify(hex.replace(':', ''))).decode('ascii')
 
@@ -665,20 +687,21 @@ class AcmeManager(object):
         if (self._setting('log_level') == 'detail'):
             self._log(*args)
 
-    def _warn(self, *args, color='red', style='normal'):
+    def _warn(self, *args, code: WarningCode = None, color='red', style='normal'):
+        self.warning_code = code if (code is not None) else WarningCode.GENERAL
         if (not self.args.quiet):
             self._colorize(sys.stderr, color, style, self._message(*args))
         if (self._setting('log_level') in ['normal', 'debug', 'verbose']):
             self._log(*args)
 
     def _error(self, *args, code: ErrorCode = None, color='red', style='bold'):
-        self.exit_code = code if (code is not None) else ErrorCode.GENERAL
+        self.error_code = code if (code is not None) else ErrorCode.GENERAL
         message = self._message(*args)
         self._colorize(sys.stderr, color, style, message)
         self._log(message)
 
     def _fatal(self, *args, code: ErrorCode = None, color='red', style='bold'):
-        self.exit_code = code if (code is not None) else ErrorCode.FATAL
+        self.error_code = code if (code is not None) else ErrorCode.FATAL
         message = self._message(*args)
         self._colorize(sys.stderr, color, style, message)
         self._log(message)
@@ -908,12 +931,12 @@ class AcmeManager(object):
             if (critical):
                 self._fatal('Failed to reload zone ', zone_name, ', code: ', error.returncode, '\n', self._indent(error.output), '\n', code=ErrorCode.DNS)
             else:
-                self._warn('Failed to reload zone ', zone_name, ', code: ', error.returncode, '\n', self._indent(error.output), '\n')
+                self._warn('Failed to reload zone ', zone_name, ', code: ', error.returncode, '\n', self._indent(error.output), '\n', code=WarningCode.DNS)
         except Exception as error:
             if (critical):
                 self._fatal('Failed to reload zone ', zone_name, '\n', self._indent(error), '\n', code=ErrorCode.DNS)
             else:
-                self._warn('Failed to reload zone ', zone_name, '\n', self._indent(error), '\n')
+                self._warn('Failed to reload zone ', zone_name, '\n', self._indent(error), '\n', code=WarningCode.DNS)
 
     def _dns_request(self, name, type, name_server=None):
         attempt_count = 9
@@ -941,14 +964,14 @@ class AcmeManager(object):
         response, status = self._dns_request(zone_name, 'SOA')
         if (response):
             return response.answers[0]['data'][0]
-        self._warn('Unable to find primary name server for ', zone_name, ' ', status, '\n')
+        self._warn('Unable to find primary name server for ', zone_name, ' ', status, '\n', code=WarningCode.DNS)
         return None
 
     def _get_name_servers(self, zone_name):
         response, status = self._dns_request(zone_name, 'NS')
         if (response):
             return [answer['data'] for answer in response.answers]
-        self._warn('Unable to find name servers for ', zone_name, ' ', status, '\n')
+        self._warn('Unable to find name servers for ', zone_name, ' ', status, '\n', code=WarningCode.DNS)
         return []
 
     def _lookup_dns_challenge(self, name_server, domain_name):
@@ -974,9 +997,10 @@ class AcmeManager(object):
             self._debug(operation, ' records for ', zone_name, '\n')
             return True
         except subprocess.CalledProcessError as error:
-            self._warn(operation, ' records failed for ', zone_name, ', code: ', error.returncode, '\n', self._indent(error.output), '\n')
+            self._warn(operation, ' records failed for ', zone_name, ', code: ', error.returncode, '\n', self._indent(error.output), '\n',
+                       code=WarningCode.DNS)
         except Exception as error:
-            self._warn(operation, ' records failed for ', zone_name, '\n', self._indent(error), '\n')
+            self._warn(operation, ' records failed for ', zone_name, '\n', self._indent(error), '\n', code=WarningCode.DNS)
         return False
 
     def _set_dns_challenges(self, zone_name, zone_key, challenges):
@@ -1072,9 +1096,10 @@ class AcmeManager(object):
                     output = subprocess.check_output(service_command, shell=True, stderr=subprocess.STDOUT)
                     reloaded = True
                     if (output):
-                        self._warn('Service ', service_name, ' responded to reload with:\n', output, '\n')
+                        self._warn('Service ', service_name, ' responded to reload with:\n', output, '\n', code=WarningCode.SERVICE)
                 except subprocess.CalledProcessError as error:
-                    self._warn('Service ', service_name, ' reload failed, code: ', error.returncode, '\n', self._indent(error.output), '\n')
+                    self._warn('Service ', service_name, ' reload failed, code: ', error.returncode, '\n', self._indent(error.output), '\n',
+                               code=WarningCode.SERVICE)
             else:
                 self._error('Service ', service_name, ' does not have registered reload command\n', code=ErrorCode.CONFIG)
         return reloaded
@@ -1515,15 +1540,16 @@ class AcmeManager(object):
             except urllib.error.HTTPError as error:
                 if ((400 <= error.code) and (error.code < 500)):
                     self._warn('Unable to retrieve SCT from log ', ct_log_name, ' HTTP error: ', error.code, ' ', error.reason, '\n',
-                               self._indent(error.read()), '\n')
+                               self._indent(error.read()), '\n', code=WarningCode.SCT)
                 else:
-                    self._warn('Unable to retrieve SCT from log ', ct_log_name, ' HTTP error: ', error.code, ' ', error.reason, '\n')
+                    self._warn('Unable to retrieve SCT from log ', ct_log_name, ' HTTP error: ', error.code, ' ', error.reason, '\n',
+                               code=WarningCode.SCT)
             except urllib.error.URLError as error:
-                self._warn('Unable to retrieve SCT from log ', ct_log_name, ' ', error.reason, '\n')
+                self._warn('Unable to retrieve SCT from log ', ct_log_name, ' ', error.reason, '\n', code=WarningCode.SCT)
             except Exception as error:
-                self._warn('Unable to retrieve SCT from log ', ct_log_name, ' ', error, '\n')
+                self._warn('Unable to retrieve SCT from log ', ct_log_name, ' ', error, '\n', code=WarningCode.SCT)
         else:
-            self._error('Unknown CT log: ', ct_log_name, '\n', code=ErrorCode.PERMISSION)
+            self._error('Unknown CT log: ', ct_log_name, '\n', code=ErrorCode.CONFIG)
         return None
 
     def load_sct(self, file_name, key_type, ct_log_name, certificate):
@@ -1594,13 +1620,14 @@ class AcmeManager(object):
                 return False
             if ((400 <= error.code) and (error.code < 500)):
                 self._warn('Unable to retrieve OCSP response from ', ocsp_url, ' HTTP error: ', error.code, ' ', error.reason, '\n',
-                           self._indent(error.read()), '\n')
+                           self._indent(error.read()), '\n', code=WarningCode.OCSP)
             else:
-                self._warn('Unable to retrieve OCSP response from ', ocsp_url, ' HTTP error: ', error.code, ' ', error.reason, '\n')
+                self._warn('Unable to retrieve OCSP response from ', ocsp_url, ' HTTP error: ', error.code, ' ', error.reason, '\n',
+                           code=WarningCode.OCSP)
         except urllib.error.URLError as error:
-            self._warn('Unable to retrieve OCSP response from ', ocsp_url, ' ', error.reason, '\n')
+            self._warn('Unable to retrieve OCSP response from ', ocsp_url, ' ', error.reason, '\n', code=WarningCode.OCSP)
         except Exception as error:
-            self._warn('Unable to retrieve OCSP response from ', ocsp_url, ' ', error, '\n')
+            self._warn('Unable to retrieve OCSP response from ', ocsp_url, ' ', error, '\n', code=WarningCode.OCSP)
         return None
 
     def load_oscp_response(self, file_name, key_type):
@@ -2025,7 +2052,7 @@ class AcmeManager(object):
                     authorization_resources[domain_name] = authorization_resource
                     self._debug('Requesting authorization for ', domain_name, '\n')
                 else:
-                    self._warn(domain_name, ' not authorized\n')
+                    self._warn(domain_name, ' not authorized\n', code=WarningCode.AUTH)
             else:
                 self._fatal('Unexpected status "', authorization_resource.body.status, '" for authorization of ', domain_name, '\n', code=ErrorCode.ACME)
 
@@ -2108,7 +2135,7 @@ class AcmeManager(object):
                     heapq.heappush(waiting, DNSTuple(datetime.datetime.now() + datetime.timedelta(seconds=self._setting_int('dns_lookup_delay')),
                                                      name_server, domain_name, identifier, response, attempt_count + 1))
                 else:
-                    self._warn('Maximum attempts reached waiting for DNS challenge ', domain_name, ' at ', name_server, '\n')
+                    self._warn('Maximum attempts reached waiting for DNS challenge ', domain_name, ' at ', name_server, '\n', code=WarningCode.DNS)
         if (challenge_dns_responses):
             time.sleep(2)
 
@@ -2139,7 +2166,7 @@ class AcmeManager(object):
             try:
                 authorization_resource, response = self.acme_client.poll(authorization_resource)
                 if (200 != response.status_code):
-                    self._warn(response, ' while waiting for domain challenge for ', domain_name, '\n')
+                    self._warn(response, ' while waiting for domain challenge for ', domain_name, '\n', code=WarningCode.AUTH)
                     heapq.heappush(waiting, AuthorizationTuple(
                         self.acme_client.retry_after(response, default=self._setting_int('authorization_delay')),
                         domain_name, authorization_resource))
@@ -2194,11 +2221,11 @@ class AcmeManager(object):
             self._error('Authorization failed for ', domain_name, '\n', code=ErrorCode.AUTH)
             self._failed_auth.add(domain_name)
         for domain_name in exhausted:
-            self._warn('Authorization timed out for ', domain_name, '\n', code=ErrorCode.AUTH)
+            self._warn('Authorization timed out for ', domain_name, '\n', code=WarningCode.AUTH)
             self._failed_auth.add(domain_name)
 
-        if ((ErrorCode.AUTH == self.exit_code) and (not self._failed_auth)):  # clear auth error if nothing failed
-            self.exit_code = ErrorCode.NONE
+        if ((ErrorCode.AUTH == self.error_code) and (not self._failed_auth)):  # clear auth error if nothing failed
+            self.error_code = ErrorCode.NONE
 
         order.update(authorizations=[authorization_resource for authorization_resource in authorization_resources.values()])
 
@@ -2363,7 +2390,8 @@ class AcmeManager(object):
                 else:
                     self._warn('A backup private key for ', private_key_name, ' is younger than HPKP duration',
                                _duration(' by ', hpkp_days - youngest_key_age.days), ', rollover skipped\n',
-                               'Use "--force" to force key rollover, note that this can brick a web site if HPKP is deployed\n')
+                               'Use "--force" to force key rollover, note that this can brick a web site if HPKP is deployed\n',
+                               code=WarningCode.KEY)
 
             try:
                 keys = {key_type: self.load_private_key('private_key', private_key_name, key_type, key_cipher_data) for key_type in key_options}
@@ -2380,7 +2408,8 @@ class AcmeManager(object):
                         else:
                             self._warn('A backup private key for ', private_key_name, ' is younger than HPKP duration',
                                        _duration(' by ', hpkp_days - youngest_key_age.days), ', rollover skipped\n',
-                                       'Use "--force" to force key rollover, note that this can brick a web site if HPKP is deployed\n')
+                                       'Use "--force" to force key rollover, note that this can brick a web site if HPKP is deployed\n',
+                                       code=WarningCode.KEY)
 
             previous_keys = {}
             try:
@@ -2409,9 +2438,9 @@ class AcmeManager(object):
                     and self._need_to_rollover(oldest_key_age, expiration_days)
                     and self._safe_to_rollover(youngest_key_age, hpkp_days)):
                 if manage_keys:
-                    self._status('Private key for ', private_key_name, ' has expired. Use "--rollover" to replace.\n')
+                    self._warn('Private key for ', private_key_name, ' has expired. Use "--rollover" to replace.\n', code=WarningCode.KEY)
                 else:
-                    self._status('Private key for ', private_key_name, ' has expired. Replace with backup key or new key.\n')
+                    self._warn('Private key for ', private_key_name, ' has expired. Replace with backup key or new key.\n', code=WarningCode.KEY)
 
             for key_type, options in key_options.items():
                 if (not keys[key_type].key):
@@ -2550,7 +2579,7 @@ class AcmeManager(object):
             private_key_name = private_key_data.name
 
             if ((not private_key_data.issued_certificates) and (private_key_data.generated_key or private_key_data.rolled_key)):
-                self._warn('No certificates issued for private key ', private_key_name, ' skipping key updates\n')
+                self._warn('No certificates issued for private key ', private_key_name, ' skipping key updates\n', code=WarningCode.CONFIG)
                 self._clear_hooks()
                 continue
 
@@ -3031,20 +3060,24 @@ class AcmeManager(object):
                                     else:
                                         self._warn(key_type.upper(), ' certificate ', certificate_name, ' has OCSP status "', ocsp_status.upper(), '"',
                                                    ' from ', ocsp_url,
-                                                   ' updated at ', this_update.strftime('%Y-%m-%d %H:%M:%S UTC'), '\n')
+                                                   ' updated at ', this_update.strftime('%Y-%m-%d %H:%M:%S UTC'), '\n',
+                                                   code=WarningCode.OCSP)
                                 else:
                                     self._warn(key_type.upper(), ' certificate ', certificate_name,
                                                ' OCSP request received "', ocsp_response['response_status'].native, '"',
-                                               ' from ', ocsp_url, '\n')
+                                               ' from ', ocsp_url, '\n',
+                                               code=WarningCode.OCSP)
                             elif (ocsp_response is False):
                                 self._debug('OCSP response for ', key_type.upper(), ' certificate ', certificate_name,
                                             ' from ', ocsp_url,
                                             ' has not been updated\n')
                                 break
                         else:
-                            self._warn('Unable to retrieve OCSP response for ', key_type.upper(), ' certificate ', certificate_name, '\n')
+                            self._warn('Unable to retrieve OCSP response for ', key_type.upper(), ' certificate ', certificate_name, '\n',
+                                       code=WarningCode.OCSP)
                     else:
-                        self._warn('No OCSP responder URL for ', key_type.upper(), ' certificate ', certificate_name, ' and no default set\n')
+                        self._warn('No OCSP responder URL for ', key_type.upper(), ' certificate ', certificate_name, ' and no default set\n',
+                                   code=WarningCode.CONFIG)
 
             try:
                 self._commit_file_transactions(transactions, archive_name=None)

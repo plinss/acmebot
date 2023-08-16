@@ -18,7 +18,7 @@ def run() -> int:
             del manager
         except Exception:
             pass
-    return exit_code.value
+    return exit_code
 
 if __name__ == '__main__':      # called from the command line
     sys.exit(run())

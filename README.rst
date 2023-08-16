@@ -565,6 +565,8 @@ All of these need only be present when the desired value is different from the d
 * ``log_group`` speficies the name of the group that will own log files.
   The default value is ``"adm"``.
   Note that this tool must run as root, or another user that has rights to set the file ownership to this group.
+* ``warning_exit_code`` specifies if warnings will produce a non-zero exit code.
+  The default value is ``false``.
 * ``hpkp_days`` specifies the number of days that HPKP pins should be cached for.
   The default value is ``60``.
   HPKP pin files can be turned off by setting this value to ``0`` or ``null``.
