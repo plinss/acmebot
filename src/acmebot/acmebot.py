@@ -157,7 +157,7 @@ class AcmeManager:
             'light blue': 94,
             'light magenta': 95,
             'light cyan': 96,
-            'white': 97
+            'white': 97,
         }
         self._style_codes = {
             'normal': 0,
@@ -169,7 +169,7 @@ class AcmeManager:
             'blink': 5,
             'reverse': 7,
             'invert': 7,
-            'hidden': 8
+            'hidden': 8,
         }
 
         argparser = argparse.ArgumentParser(description='ACME Certificate Manager')
@@ -304,7 +304,7 @@ class AcmeManager:
                 'nsupdate_command': '/usr/bin/nsupdate',
                 'public_suffix_list_url': 'https://publicsuffix.org/list/public_suffix_list.dat',
                 'verify': None,
-                'services': None
+                'services': None,
             },
             'directories': {
                 'pid': '/var/run',
@@ -325,11 +325,11 @@ class AcmeManager:
                 'sct': '/etc/ssl/scts/{name}/{key_type}',
                 'update_key': '/etc/ssl/update_keys',
                 'archive': '/etc/ssl/archive',
-                'temp': None
+                'temp': None,
             },
             'key_type_suffixes': {
                 'rsa': '.rsa',
-                'ecdsa': '.ecdsa'
+                'ecdsa': '.ecdsa',
             },
             'file_names': {
                 'log': self.script_name + '.log',
@@ -344,11 +344,11 @@ class AcmeManager:
                 'challenge': '{name}',
                 'hpkp': '{name}.{server}',
                 'ocsp': '{name}{suffix}.ocsp',
-                'sct': '{ct_log_name}.sct'
+                'sct': '{ct_log_name}.sct',
             },
             'hpkp_headers': {
                 'apache': 'Header always set Public-Key-Pins "{header}"\n',
-                'nginx': 'add_header Public-Key-Pins "{header}" always;\n'
+                'nginx': 'add_header Public-Key-Pins "{header}" always;\n',
             },
             'services': {
                 'apache': 'systemctl reload-or-restart apache2',
@@ -362,31 +362,10 @@ class AcmeManager:
                 'prosody': 'systemctl reload-or-restart prosody',
                 'slapd': 'systemctl reload-or-restart slapd',
                 'synapse': 'systemctl reload-or-restart matrix-synapse',
-                'znc': 'systemctl reload-or-restart znc'
+                'znc': 'systemctl reload-or-restart znc',
             },
             'ct_logs': {
                 'google_argon': [
-                    {
-                        'log_id': 'sh4FzIuizYogTodm+Su5iiUgZ2va+nDnsklTLe+LkF4=',
-                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE6Tx2p1yKY4015NyIYvdrk36es0uAc1zA4PQ+TGRY+3ZjUTIYY9Wyu+3q/147JG4vNVKLtDWarZwVqGkg6lAYzA==',
-                        'url': 'https://ct.googleapis.com/logs/argon2020/',
-                        'start': '2020-01-01T00:00:00Z',
-                        'end': '2021-01-01T00:00:00Z',
-                    },
-                    {
-                        'log_id': '9lyUL9F3MCIUVBgIMJRWjuNNExkzv98MLyALzE7xZOM=',
-                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAETeBmZOrzZKo4xYktx9gI2chEce3cw/tbr5xkoQlmhB18aKfsxD+MnILgGNl0FOm0eYGilFVi85wLRIOhK8lxKw==',
-                        'url': 'https://ct.googleapis.com/logs/argon2021/',
-                        'start': '2021-01-01T00:00:00Z',
-                        'end': '2022-01-01T00:00:00Z',
-                    },
-                    {
-                        'log_id': 'KXm+8J45OSHwVnOfY6V35b5XfZxgCvj5TV0mXCVdx4Q=',
-                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEeIPc6fGmuBg6AJkv/z7NFckmHvf/OqmjchZJ6wm2qN200keRDg352dWpi7CHnSV51BpQYAj1CQY5JuRAwrrDwg==',
-                        'url': 'https://ct.googleapis.com/logs/argon2022/',
-                        'start': '2022-01-01T00:00:00Z',
-                        'end': '2023-01-01T00:00:00Z',
-                    },
                     {
                         'log_id': '6D7Q2j71BjUy51covIlryQPTy9ERa+zraeF3fW0GvW4=',
                         'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE0JCPZFJOQqyEti5M8j13ALN3CAVHqkVM4yyOcKWCu2yye5yYeqDpEXYoALIgtM3TmHtNlifmt+4iatGwLpF3eA==',
@@ -394,29 +373,29 @@ class AcmeManager:
                         'start': '2023-01-01T00:00:00Z',
                         'end': '2024-01-01T00:00:00Z',
                     },
+                    {
+                        'log_id': '7s3QZNXbGs7FXLedtM0TojKHRny87N7DUUhZRnEftZs=',
+                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEHblsqctplMVc5ramA7vSuNxUQxcomQwGAVAdnWTAWUYr3MgDHQW0LagJ95lB7QT75Ve6JgT2EVLOFGU7L3YrwA==',
+                        'url': 'https://ct.googleapis.com/logs/us1/argon2024/',
+                        'start': '2024-01-01T00:00:00Z',
+                        'end': '2025-01-01T00:00:00Z',
+                    },
+                    {
+                        'log_id': 'TnWjJ1yaEMM4W2zU3z9S6x3w4I4bjWnAsfpksWKaOd8=',
+                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEIIKh+WdoqOTblJji4WiH5AltIDUzODyvFKrXCBjw/Rab0/98J4LUh7dOJEY7+66+yCNSICuqRAX+VPnV8R1Fmg==',
+                        'url': 'https://ct.googleapis.com/logs/us1/argon2025h1/',
+                        'start': '2025-01-01T00:00:00Z',
+                        'end': '2025-07-01T00:00:00Z',
+                    },
+                    {
+                        'log_id': 'EvFONL1TckyEBhnDjz96E/jntWKHiJxtMAWE6+WGJjo=',
+                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEr+TzlCzfpie1/rJhgxnIITojqKk9VK+8MZoc08HjtsLzD8e5yjsdeWVhIiWCVk6Y6KomKTYeKGBv6xVu93zQug==',
+                        'url': 'https://ct.googleapis.com/logs/us1/argon2025h2/',
+                        'start': '2025-07-01T00:00:00Z',
+                        'end': '2026-01-01T00:00:00Z',
+                    },
                 ],
                 'google_xenon': [
-                    {
-                        'log_id': 'B7dcG+V9aP/xsMYdIxXHuuZXfFeUt2ruvGE6GmnTohw=',
-                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEZU75VqjyzSTgFZKAnWg1QeYfFFIRZTMK7q3kWWZsmHhQdrBYnHRZ3OA4kUeUx0JN+xX+dSgt1ruqUhhl7jOvmw==',
-                        'url': 'https://ct.googleapis.com/logs/xenon2020/',
-                        'start': '2020-01-01T00:00:00Z',
-                        'end': '2021-01-01T00:00:00Z',
-                    },
-                    {
-                        'log_id': 'fT7y+I//iFVoJMLAyp5SiXkrxQ54CX8uapdomX4i8Nc=',
-                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAER+1MInu8Q39BwDZ5Rp9TwXhwm3ktvgJzpk/r7dDgGk7ZacMm3ljfcoIvP1E72T8jvyLT1bvdapylajZcTH6W5g==',
-                        'url': 'https://ct.googleapis.com/logs/xenon2021/',
-                        'start': '2021-01-01T00:00:00Z',
-                        'end': '2022-01-01T00:00:00Z',
-                    },
-                    {
-                        'log_id': 'RqVV63X6kSAwtaKJafTzfREsQXS+/Um4havy/HD+bUc=',
-                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE+WS9FSxAYlCVEzg8xyGwOrmPonoV14nWjjETAIdZvLvukPzIWBMKv6tDNlQjpIHNrUcUt1igRPpqoKDXw2MeKw==',
-                        'url': 'https://ct.googleapis.com/logs/xenon2022/',
-                        'start': '2022-01-01T00:00:00Z',
-                        'end': '2023-01-01T00:00:00Z',
-                    },
                     {
                         'log_id': 'rfe++nz/EMiLnT2cHj4YarRnKV3PsQwkyoWGNOvcgoo=',
                         'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEchY+C+/vzj5g3ZXLY3q5qY1Kb2zcYYCmRV4vg6yU84WI0KV00HuO/8XuQqLwLZPjwtCymeLhQunSxgAnaXSuzg==',
@@ -424,35 +403,49 @@ class AcmeManager:
                         'start': '2023-01-01T00:00:00Z',
                         'end': '2024-01-01T00:00:00Z',
                     },
+                    {
+                        'log_id': 'dv+IPwq2+5VRwmHM9Ye6NLSkzbsp3GhCCp/mZ0xaOnQ=',
+                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEuWDgNB415GUAk0+QCb1a7ETdjA/O7RE+KllGmjG2x5n33O89zY+GwjWlPtwpurvyVOKoDIMIUQbeIW02UI44TQ==',
+                        'url': 'https://ct.googleapis.com/logs/eu1/xenon2024/',
+                        'start': '2024-01-01T00:00:00Z',
+                        'end': '2025-01-01T00:00:00Z',
+                    },
+                    {
+                        'log_id': 'zxFW7tUufK/zh1vZaS6b6RpxZ0qwF+ysAdJbd87MOwg=',
+                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEguLOkEA/gQ7f6uEgK14uMFRGgblY7a+9/zanngtfamuRpcGY4fLN6xcgcMoqEuZUeFDc/239HKe2Oh/5JqkbvQ==',
+                        'url': 'https://ct.googleapis.com/logs/eu1/xenon2025h1/',
+                        'start': '2025-01-01T00:00:00Z',
+                        'end': '2025-07-01T00:00:00Z',
+                    },
+                    {
+                        'log_id': '3dzKNJXX4RYF55Uy+sef+D0cUN/bADoUEnYKLKy7yCo=',
+                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEa+Cv7QZ8Pe/ZDuRYSwTYKkeZkIl6uTaldcgEuMviqiu1aJ2IKaKlz84rmhWboD6dlByyt0ryUexA7WJHpANJhg==',
+                        'url': 'https://ct.googleapis.com/logs/eu1/xenon2025h2/',
+                        'start': '2025-07-01T00:00:00Z',
+                        'end': '2026-01-01T00:00:00Z',
+                    },
                 ],
-                'cloudflare_numbus': [
-                    {
-                        'log_id': 'Xqdz+d9WwOe1Nkh90EngMnqRmgyEoRIShBh1loFxRVg=',
-                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE01EAhx4o0zPQrXTcYjgCt4MVFsT0Pwjzb1RwrM0lhWDlxAYPP6/gyMCXNkOn/7KFsjL7rwk78tHMpY8rXn8AYg==',
-                        'url': 'https://ct.cloudflare.com/logs/nimbus2020/',
-                        'start': '2020-01-01T00:00:00Z',
-                        'end': '2021-01-01T00:00:00Z',
-                    },
-                    {
-                        'log_id': 'RJRlLrDuzq/EQAfYqP4owNrmgr7YyzG1P9MzlrW2gag=',
-                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAExpon7ipsqehIeU1bmpog9TFo4Pk8+9oN8OYHl1Q2JGVXnkVFnuuvPgSo2Ep+6vLffNLcmEbxOucz03sFiematg==',
-                        'url': 'https://ct.cloudflare.com/logs/nimbus2021/',
-                        'start': '2021-01-01T00:00:00Z',
-                        'end': '2022-01-01T00:00:00Z',
-                    },
-                    {
-                        'log_id': 'QcjKsd8iRkoQxqE6CUKHXk4xixsD6+tLx2jwkGKWBvY=',
-                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAESLJHTlAycmJKDQxIv60pZG8g33lSYxYpCi5gteI6HLevWbFVCdtZx+m9b+0LrwWWl/87mkNN6xE0M4rnrIPA/w==',
-                        'url': 'https://ct.cloudflare.com/logs/nimbus2022/',
-                        'start': '2022-01-01T00:00:00Z',
-                        'end': '2023-01-01T00:00:00Z',
-                    },
+                'cloudflare_nimbus': [
                     {
                         'log_id': 'ejKMVNi3LbYg6jjgUh7phBZwMhOFTTvSK8E6V6NS61I=',
                         'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEi/8tkhjLRp0SXrlZdTzNkTd6HqmcmXiDJz3fAdWLgOhjmv4mohvRhwXul9bgW0ODgRwC9UGAgH/vpGHPvIS1qA==',
                         'url': 'https://ct.cloudflare.com/logs/nimbus2023/',
                         'start': '2023-01-01T00:00:00Z',
                         'end': '2024-01-01T00:00:00Z',
+                    },
+                    {
+                        'log_id': '2ra/az+1tiKfm8K7XGvocJFxbLtRhIU0vaQ9MEjX+6s=',
+                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEd7Gbe4/mizX+OpIpLayKjVGKJfyTttegiyk3cR0zyswz6ii5H+Ksw6ld3Ze+9p6UJd02gdHrXSnDK0TxW8oVSA==',
+                        'url': 'https://ct.cloudflare.com/logs/nimbus2024/',
+                        'start': '2024-01-01T00:00:00Z',
+                        'end': '2025-01-01T00:00:00Z',
+                    },
+                    {
+                        'log_id': 'zPsPaoVxCWX+lZtTzumyfCLphVwNl422qX5UwP5MDbA=',
+                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEGoAaFRkZI3m0+qB5jo3VwdzCtZaSfpTgw34UfAoNLUaonRuxQWUMX5jEWhd5gVtKFEHsr6ldDqsSGXHNQ++7lw==',
+                        'url': 'https://ct.cloudflare.com/logs/nimbus2025/',
+                        'start': '2025-01-01T00:00:00Z',
+                        'end': '2026-01-01T00:00:00Z',
                     },
                 ],
                 'digicert_log_server': {
@@ -467,56 +460,28 @@ class AcmeManager:
                 },
                 'digicert_yeti': [
                     {
-                        'log_id': '8JWkWfIA0YJAEC0vk4iOrUv+HUfjmeHQNKawqKqOsnM=',
-                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEURAG+Zo0ac3n37ifZKUhBFEV6jfcCzGIRz3tsq8Ca9BP/5XUHy6ZiqsPaAEbVM0uI3Tm9U24RVBHR9JxDElPmg==',
-                        'url': 'https://yeti2020.ct.digicert.com/log/',
-                        'start': '2020-01-01T00:00:00Z',
-                        'end': '2021-01-01T00:00:00Z',
-                    },
-                    {
-                        'log_id': 'XNxDkv7mq0VEsV6a1FbmEDf71fpH3KFzlLJe5vbHDso=',
-                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE6J4EbcpIAl1+AkSRsbhoY5oRTj3VoFfaf1DlQkfi7Rbe/HcjfVtrwN8jaC+tQDGjF+dqvKhWJAQ6Q6ev6q9Mew==',
-                        'url': 'https://yeti2021.ct.digicert.com/log/',
-                        'start': '2021-01-01T00:00:00Z',
-                        'end': '2022-01-01T00:00:00Z',
-                    },
-                    {
-                        'log_id': 'IkVFB1lVJFaWP6Ev8fdthuAjJmOtwEt/XcaDXG7iDwI=',
-                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEn/jYHd77W1G1+131td5mEbCdX/1v/KiYW5hPLcOROvv+xA8Nw2BDjB7y+RGyutD2vKXStp/5XIeiffzUfdYTJg==',
-                        'url': 'https://yeti2022.ct.digicert.com/log/',
-                        'start': '2022-01-01T00:00:00Z',
-                        'end': '2023-01-01T00:00:00Z',
-                    },
-                    {
                         'log_id': 'Nc8ZG7+xbFe/D61MbULLu7YnICZR6j/hKu+oA8M71kw=',
                         'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEfQ0DsdWYitzwFTvG3F4Nbj8Nv5XIVYzQpkyWsU4nuSYlmcwrAp6m092fsdXEw6w1BAeHlzaqrSgNfyvZaJ9y0Q==',
                         'url': 'https://yeti2023.ct.digicert.com/log/',
                         'start': '2023-01-01T00:00:00Z',
                         'end': '2024-01-01T00:00:00Z',
                     },
+                    {
+                        'log_id': 'SLDja9qmRzQP5WoC+p0w6xxSActW3SyB2bu/qznYhHM=',
+                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEV7jBbzCkfy7k8NDZYGITleN6405Tw7O4c4XBGA0jDliE0njvm7MeLBrewY+BGxlEWLcAd2AgGnLYgt6unrHGSw==',
+                        'url': 'https://yeti2024.ct.digicert.com/log/',
+                        'start': '2024-01-01T00:00:00Z',
+                        'end': '2025-01-01T00:00:00Z',
+                    },
+                    {
+                        'log_id': 'fVkeEuF4KnscYWd8Xv340IdcFKBOlZ65Ay/ZDowuebg=',
+                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE35UAXhDBAfc34xB00f+yypDtMplfDDn+odETEazRs3OTIMITPEy1elKGhj3jlSR82JGYSDvw8N8h8bCBWlklQw==',
+                        'url': 'https://yeti2025.ct.digicert.com/log/',
+                        'start': '2025-01-01T00:00:00Z',
+                        'end': '2026-01-01T00:00:00Z',
+                    },
                 ],
                 'digicert_nessie': [
-                    {
-                        'log_id': 'xlKg7EjOs/yrFwmSxDqHQTMJ6ABlomJSQBujNioXxWU=',
-                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE4hHIyMVIrR9oShgbQMYEk8WX1lmkfFKB448Gn93KbsZnnwljDHY6MQqEnWfKGgMOq0gh3QK48c5ZB3UKSIFZ4g==',
-                        'url': 'https://nessie2020.ct.digicert.com/log/',
-                        'start': '2020-01-01T00:00:00Z',
-                        'end': '2021-01-01T00:00:00Z',
-                    },
-                    {
-                        'log_id': '7sCV7o1yZA+S48O5G8cSo2lqCXtLahoUOOZHssvtxfk=',
-                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9o7AiwrbGBIX6Lnc47I6OfLMdZnRzKoP5u072nBi6vpIOEooktTi1gNwlRPzGC2ySGfuc1xLDeaA/wSFGgpYFg==',
-                        'url': 'https://nessie2021.ct.digicert.com/log/',
-                        'start': '2021-01-01T00:00:00Z',
-                        'end': '2022-01-01T00:00:00Z',
-                    },
-                    {
-                        'log_id': 'UaOw9f0BeZxWbbg3eI8MpHrMGyfL956IQpoN/tSLBeU=',
-                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJyTdaAMoy/5jvg4RR019F2ihEV1McclBKMe2okuX7MCv/C87v+nxsfz1Af+p+0lADGMkmNd5LqZVqxbGvlHYcQ==',
-                        'url': 'https://nessie2022.ct.digicert.com/log/',
-                        'start': '2022-01-01T00:00:00Z',
-                        'end': '2023-01-01T00:00:00Z',
-                    },
                     {
                         'log_id': 's3N3B+GEUPhjhtYFqdwRCUp5LbFnDAuH3PADDnk2pZo=',
                         'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEEXu8iQwSCRSf2CbITGpUpBtFVt8+I0IU0d1C36Lfe1+fbwdaI0Z5FktfM2fBoI1bXBd18k2ggKGYGgdZBgLKTg==',
@@ -524,63 +489,133 @@ class AcmeManager:
                         'start': '2023-01-01T00:00:00Z',
                         'end': '2024-01-01T00:00:00Z',
                     },
+                    {
+                        'log_id': 'c9meiRtMlnigIH1HneayxhzQUV5xGSqMa4AQesF3crU=',
+                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAELfyieza/VpHp/j/oPfzDp+BhUuos6QWjnycXgQVwa4FhRIr4OxCAQu0DLwBQIfxBVISjVNUusnoWSyofK2YEKw==',
+                        'url': 'https://nessie2024.ct.digicert.com/log/',
+                        'start': '2024-01-01T00:00:00Z',
+                        'end': '2025-01-01T00:00:00Z',
+                    },
+                    {
+                        'log_id': '5tIxY0B3jMEQQQbXcbnOwdJA9paEhvu6hzId/R43jlA=',
+                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE8vDwp4uBLgk5O59C2jhEX7TM7Ta72EN/FklXhwR/pQE09+hoP7d4H2BmLWeadYC3U6eF1byrRwZV27XfiKFvOA==',
+                        'url': 'https://nessie2025.ct.digicert.com/log/',
+                        'start': '2025-01-01T00:00:00Z',
+                        'end': '2026-01-01T00:00:00Z',
+                    },
                 ],
-                'sectigo_sabre': {
-                    'log_id': 'VYHUwhaQNgFK6gubVzxT8MDkOHhwJQgXL6OqHQcT0ww=',
-                    'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE8m/SiQ8/xfiHHqtls9m7FyOMBg4JVZY9CgiixXGz0akvKD6DEL8S0ERmFe9U4ZiA0M4kbT5nmuk3I85Sk4bagA==',
-                    'url': 'https://sabre.ct.comodo.com/',
-                },
-                'sectigo_mammoth': {
-                    'log_id': 'b1N2rDHwMRnYmQCkURX/dxUcEdkCwQApBo2yCJo32RM=',
-                    'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE7+R9dC4VFbbpuyOL+yy14ceAmEf7QGlo/EmtYU6DRzwat43f/3swtLr/L8ugFOOt1YU/RFmMjGCL17ixv66MZw==',
-                    'url': 'https://mammoth.ct.comodo.com/',
-                },
+                'sectigo_sabre': [
+                    {
+                        'log_id': 'VYHUwhaQNgFK6gubVzxT8MDkOHhwJQgXL6OqHQcT0ww=',
+                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE8m/SiQ8/xfiHHqtls9m7FyOMBg4JVZY9CgiixXGz0akvKD6DEL8S0ERmFe9U4ZiA0M4kbT5nmuk3I85Sk4bagA==',
+                        'url': 'https://sabre.ct.comodo.com/',
+                        'start': '2023-01-01T00:00:00Z',
+                        'end': '2024-01-01T00:00:00Z',
+                    },
+                    {
+                        'log_id': 'ouK/1h7eLy8HoNZObTen3GVDsMa1LqLat4r4mm31F9g=',
+                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAELAH2zjG8qhRhUf5reoeuptObx4ctClrIT7VU3MmToADuyhy5p7Z7RzvlT6psFhxwLsjsU1pMIUx+JwsTFF78hQ==',
+                        'url': 'https://sabre2024h1.ct.sectigo.com/',
+                        'start': '2024-01-01T00:00:00Z',
+                        'end': '2024-07-01T00:00:00Z',
+                    },
+                    {
+                        'log_id': 'GZgQcQnw1lIuMIDSnj9ku4NuKMz5D1KO7t/OSj8WtMo=',
+                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEehBMiucie20quo76a0qB1YWuA+//S/xNUz23jLt1CcnqFn7BdxbSwkV0bY3E4Yg339TzYGX8oHXwIGaOSswZ2g==',
+                        'url': 'https://sabre2024h2.ct.sectigo.com/',
+                        'start': '2024-07-01T00:00:00Z',
+                        'end': '2025-01-01T00:00:00Z',
+                    },
+                    {
+                        'log_id': '4JKz/AwdyOdoNh/eYbmWTQpSeBmKctZyxLBNpW1vVAQ=',
+                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEfi858egjjrMyBK9NV/bbxXSkem07B1EMWvuAMAXGWgzEdtYGqFdN+9/kgpDCQa5wszGi4/o9XyxdBM20nVWrQQ==',
+                        'url': 'https://sabre2025h1.ct.sectigo.com/',
+                        'start': '2025-01-01T00:00:00Z',
+                        'end': '2025-07-01T00:00:00Z',
+                    },
+                    {
+                        'log_id': 'GgT/SdBUHUCv9qDDv/HYxGcvTuzuI0BomGsXQC7ciX0=',
+                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEhRMRLXvzk4HkuXzZZDvntYOZZnlZR2pCXta9Yy63kUuuvFbExW4JoNdkGsjBr4mL9VjYuut7g1Lp9OClzc2SzA==',
+                        'url': 'https://sabre2025h2.ct.sectigo.com/',
+                        'start': '2025-07-01T00:00:00Z',
+                        'end': '2026-01-01T00:00:00Z',
+                    },
+                ],
+                'sectigo_mammoth': [
+                    {
+                        'log_id': 'b1N2rDHwMRnYmQCkURX/dxUcEdkCwQApBo2yCJo32RM=',
+                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE7+R9dC4VFbbpuyOL+yy14ceAmEf7QGlo/EmtYU6DRzwat43f/3swtLr/L8ugFOOt1YU/RFmMjGCL17ixv66MZw==',
+                        'url': 'https://mammoth.ct.comodo.com/',
+                        'start': '2023-01-01T00:00:00Z',
+                        'end': '2024-01-01T00:00:00Z',
+                    },
+                    {
+                        'log_id': 'KdA6G7Z0qnEc0wNbZVfBT4qni0/oOJRJ7KRT+US9JGg=',
+                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEpFmQ83EkJPfDVSdWnKNZHve3n86rThlmTdCK+p1ipCTwOyDkHRRnyPzkN/JLOFRaz59rB5DQDn49TIey6D8HzA==',
+                        'url': 'https://mammoth2024h1.ct.sectigo.com/',
+                        'start': '2024-01-01T00:00:00Z',
+                        'end': '2024-07-01T00:00:00Z',
+                    },
+                    {
+                        'log_id': '3+FW66oFr7WcD4ZxjajAMk6uVtlup/WlagHRwTu+Ulw=',
+                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEhWYiJG6+UmIKoK/DJRo2LqdgiaJlv6RfvYVqlAWBNZBUMZXnEZ6jLg+F76eIV4tjGoHBQZ197AE627nBJ/RlHg==',
+                        'url': 'https://mammoth2024h2.ct.sectigo.com/',
+                        'start': '2024-07-01T00:00:00Z',
+                        'end': '2025-01-01T00:00:00Z',
+                    },
+                    {
+                        'log_id': 'E0rfGrWYQgl4DG/vTHqRpBa3I0nOWFdq367ap8Kr4CI=',
+                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEEzxBtTB9LkqhqGvSxVdrmP5+79Uh4rpdsLqFEW6U4D2ojm1WjUQCnrCDzFTfm05yYks8DDLdhvvrPmbNd1hb5Q==',
+                        'url': 'https://mammoth2025h1.ct.sectigo.com/',
+                        'start': '2025-01-01T00:00:00Z',
+                        'end': '2025-07-01T00:00:00Z',
+                    },
+                    {
+                        'log_id': 'rxgaKNaMo+CpikycZ6sJ+Lu8IrquvLE4o6Gd0/m2Aw0=',
+                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEiOLHs9c3o5HXs8XaB1EEK4HtwkQ7daDmZeFKuhuxnKkqhDEprh2L8TOfEi6QsRVnZqB8C1tif2yaajCbaAIWbw==',
+                        'url': 'https://mammoth2025h2.ct.sectigo.com/',
+                        'start': '2025-07-01T00:00:00Z',
+                        'end': '2026-01-01T00:00:00Z',
+                    },
+                ],
                 'lets_encrypt_oak': [
-                    {
-                        'log_id': '5xLysDd+GmL7jskMYYTx6ns3y1YdESZb8+DzS/JBVG4=',
-                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEfzb42Zdr/h7hgqgDCo1vrNJqGqbcUvJGJEER9DDqp19W/wFSB0l166hD+U5cAXchpH8ZkBNUuvOHS0OnJ4oJrQ==',
-                        'url': 'https://oak.ct.letsencrypt.org/2020/',
-                        'start': '2020-01-01T00:00:00Z',
-                        'end': '2021-01-07T00:00:00Z',
-                    },
-                    {
-                        'log_id': 'lCC8Ho7VjWyIcx+CiyIsDdHaTV5sT5Q9YdtOL1hNosI=',
-                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAELsYzGMNwo8rBIlaklBIdmD2Ofn6HkfrjK0Ukz1uOIUC6Lm0jTITCXhoIdjs7JkyXnwuwYiJYiH7sE1YeKu8k9w==',
-                        'url': 'https://oak.ct.letsencrypt.org/2021/',
-                        'start': '2021-01-01T00:00:00Z',
-                        'end': '2022-01-07T00:00:00Z',
-                    },
-                    {
-                        'log_id': '36Veq2iCTx9sre64X04+WurNohKkal6OOxLAIERcKnM=',
-                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEhjyxDVIjWt5u9sB/o2S8rcGJ2pdZTGA8+IpXhI/tvKBjElGE5r3de4yAfeOPhqTqqc+o7vPgXnDgu/a9/B+RLg==',
-                        'url': 'https://oak.ct.letsencrypt.org/2022/',
-                        'start': '2022-01-01T00:00:00Z',
-                        'end': '2023-01-07T00:00:00Z',
-                    },
-
                     {
                         'log_id': self._hex_to_base64('B7:3E:FB:24:DF:9C:4D:BA:75:F2:39:C5:BA:58:F4:6C:5D:FC:42:CF:7A:9F:35:C4:9E:1D:09:81:25:ED:B4:99'),
                         'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEsz0OeL7jrVxEXJu+o4QWQYLKyokXHiPOOKVUL3/TNFFquVzDSer7kZ3gijxzBp98ZTgRgMSaWgCmZ8OD74mFUQ==',
                         'url': 'https://oak.ct.letsencrypt.org/2023/',
-                        'start': '2023-01-01T00:00Z',
-                        'end': '2024-01-07T00:00Z',
+                        'start': '2023-01-01T00:00:00Z',
+                        'end': '2024-01-07T00:00:00Z',
                     },
                     {
                         'log_id': self._hex_to_base64('3B:53:77:75:3E:2D:B9:80:4E:8B:30:5B:06:FE:40:3B:67:D8:4F:C3:F4:C7:BD:00:0D:2D:72:6F:E1:FA:D4:17'),
                         'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEVkPXfnvUcre6qVG9NpO36bWSD+pet0Wjkv3JpTyArBog7yUvuOEg96g6LgeN5uuk4n0kY59Gv5RzUo2Wrqkm/Q==',
                         'url': 'https://oak.ct.letsencrypt.org/2024h1/',
-                        'start': '2023-12-20T00:00Z',
-                        'end': '2024-07-20T00:00Z',
+                        'start': '2023-12-20T00:00:00Z',
+                        'end': '2024-07-20T00:00:00Z',
                     },
                     {
                         'log_id': self._hex_to_base64('3F:17:4B:4F:D7:22:47:58:94:1D:65:1C:84:BE:0D:12:ED:90:37:7F:1F:85:6A:EB:C1:BF:28:85:EC:F8:64:6E'),
                         'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE13PWU0fp88nVfBbC1o9wZfryUTapE4Av7fmU01qL6E8zz8PTidRfWmaJuiAfccvKu5+f81wtHqOBWa+Ss20waA==',
                         'url': 'https://oak.ct.letsencrypt.org/2024h2/',
-                        'start': '2024-06-20T00:00Z',
-                        'end': '2025-01-20T00:00Z',
+                        'start': '2024-06-20T00:00:00Z',
+                        'end': '2025-01-20T00:00:00Z',
+                    },
+                    {
+                        'log_id': 'ouMK5EXvva2bfjjtR2d3U9eCW4SU1yteGyzEuVCkR+c=',
+                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEKeBpU9ejnCaIZeX39EsdF5vDvf8ELTHdLPxikl4y4EiROIQfS4ercpnMHfh8+TxYVFs3ELGr2IP7hPGVPy4vHA==',
+                        'url': 'https://oak.ct.letsencrypt.org/2025h1/',
+                        'start': '2024-12-20T00:00:00Z',
+                        'end': '2025-07-20T00:00:00Z',
+                    },
+                    {
+                        'log_id': 'DeHyMCvTDcFAYhIJ6lUu/Ed0fLHX6TDvDkIetH5OqjQ=',
+                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEtXYwB63GyNLkS9L1vqKNnP10+jrW+lldthxg090fY4eG40Xg1RvANWqrJ5GVydc9u8H3cYZp9LNfkAmqrr2NqQ==',
+                        'url': 'https://oak.ct.letsencrypt.org/2025h2/',
+                        'start': '2025-06-20T00:00:00Z',
+                        'end': '2026-01-20T00:00:00Z',
                     },
                 ],
-            }
+            },
         }
 
     @property
