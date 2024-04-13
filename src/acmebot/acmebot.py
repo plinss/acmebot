@@ -241,6 +241,12 @@ class AcmeManager:
         argparser.add_argument('--quick',
                                action='store_true', dest='quick', default=False,
                                help='Avoid long running operations')
+        argparser.add_argument('--warning-exit-code',
+                               action='store_true', dest='warning_exit_code', default=False,
+                               help='Use non-zero exit codes for warnings')
+        argparser.add_argument('--no-warning-exit-code',
+                               action='store_true', dest='no_warning_exit_code', default=False,
+                               help='Do not use non-zero exit codes for warnings')
         argparser.add_argument('-A', '--accept',
                                action='store_true', dest='accept', default=False,
                                help='Automatically accept registration terms of service')
@@ -622,8 +628,14 @@ class AcmeManager:
     def exit_code(self) -> int:
         if (ErrorCode.NONE != self.error_code):
             return self.error_code.value
-        if ((WarningCode.NONE != self.warning_code) and self._setting('warning_exit_code')):
-            return self.warning_code.value
+        if (WarningCode.NONE != self.warning_code):
+            warning_exit_code = self._setting('warning_exit_code')
+            if (self.args.warning_exit_code):
+                warning_exit_code = True
+            if (self.args.no_warning_exit_code):
+                warning_exit_code = False
+            if (warning_exit_code):
+                return self.warning_code.value
         return 0
 
     def _hex_to_base64(self, hex: str) -> str:
