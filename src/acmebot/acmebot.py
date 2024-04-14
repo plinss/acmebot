@@ -359,6 +359,7 @@ class AcmeManager:
             'services': {
                 'apache': 'systemctl reload-or-restart apache2',
                 'coturn': 'systemctl reload-or-restart coturn',
+                'crowdsec': 'systemctl reload-or-restart crowdsec',
                 'dovecot': 'systemctl reload-or-restart dovecot',
                 'etherpad': 'systemctl reload-or-restart etherpad',
                 'mysql': 'systemctl reload-or-restart mysql',
