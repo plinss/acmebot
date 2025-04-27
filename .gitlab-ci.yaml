@@ -1,5 +1,5 @@
 ---
-image: python:3.7
+image: python:3.9
 
 
 stages:
@@ -24,34 +24,6 @@ stages:
 #     - pip install -e ".[dev]"
 #   script:
 #     - mypy ${PACKAGE_NAME}
-
-
-test_3.7:
-  stage: test
-  image: python:3.7
-  before_script:
-    - source .gitlab-ci.env
-    - pip install -e ".[test]"
-    - chmod a+x test.py
-  script:
-    - ./test.py
-  rules:
-    - exists:
-        - test.py
-
-
-test_3.8:
-  stage: test
-  image: python:3.8
-  before_script:
-    - source .gitlab-ci.env
-    - pip install -e ".[test]"
-    - chmod a+x test.py
-  script:
-    - ./test.py
-  rules:
-    - exists:
-        - test.py
 
 
 test_3.9:
