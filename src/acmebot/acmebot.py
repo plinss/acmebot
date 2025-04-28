@@ -1705,7 +1705,7 @@ class AcmeManager:
         if (must_staple):
             extensions.append(self._ocsp_must_staple_extension())
         req.add_extensions(extensions)
-        req.set_version(2)
+        req.set_version(0)
         req.set_pubkey(private_key)
         req.sign(private_key, 'sha256')
         return OpenSSL.crypto.dump_certificate_request(OpenSSL.crypto.FILETYPE_PEM, req)
