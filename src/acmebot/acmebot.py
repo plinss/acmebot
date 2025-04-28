@@ -1945,14 +1945,16 @@ class AcmeManager:
             try:
                 network = client.ClientNetwork(self.client_key, account=registration, user_agent=self._user_agent(),
                                                verify_ssl=self._setting('acme_directory_verify_ssl'))
-                self.acme_client = client.BackwardsCompatibleClientV2(network, self.client_key, self._setting('acme_directory_url'))
+                directory = messages.Directory.from_json(network.get(self._setting('acme_directory_url')).json())
+                self.acme_client = client.ClientV2(directory, net=network)
             except Exception as error:
                 self._fatal("Can't connect to ACME service.\n", error, '\n', code=ErrorCode.ACME)
         else:
             self._detail('Registering client\n')
             try:
                 network = client.ClientNetwork(self.client_key, user_agent=self._user_agent(), verify_ssl=self._setting('acme_directory_verify_ssl'))
-                self.acme_client = client.BackwardsCompatibleClientV2(network, self.client_key, self._setting('acme_directory_url'))
+                directory = messages.Directory.from_json(network.get(self._setting('acme_directory_url')).json())
+                self.acme_client = client.ClientV2(directory, net=network)
             except Exception as error:
                 self._fatal("Can't connect to ACME service.\n", error, '\n', code=ErrorCode.ACME)
 
@@ -1965,10 +1967,13 @@ class AcmeManager:
                     self._detail('Terms of service accepted.\n')
                 else:
                     self._status('Auto-accepting TOS: ', tos, '\n')
+                return True
 
             try:
-                reg = messages.NewRegistration.from_data(email=self._account('email'))
-                registration = self.acme_client.new_account_and_tos(reg, _accept_tos)
+                reg = messages.NewRegistration.from_data(email=self._account('email'),
+                                                         terms_of_service_agreed=_accept_tos(
+                                                             self.acme_client.directory.meta.terms_of_service))
+                registration = self.acme_client.new_account(reg)
             except Exception as error:
                 self._fatal("Can't register with ACME service.\n", error, '\n', code=ErrorCode.ACME)
 
@@ -2278,17 +2283,7 @@ class AcmeManager:
         order.update(authorizations=[authorization_resource for authorization_resource in authorization_resources.values()])
 
     def _create_auth_order(self, domain_names):
-        if (1 == self.acme_client.acme_version):
-            authorizations = []
-            for domain_name in domain_names:
-                try:
-                    authorizations.append(self.acme_client.client.request_domain_challenges(domain_name))
-                except Exception as error:
-                    self._error('Unable to request authorization for ', domain_name, '\n', self._indent(error), '\n', code=ErrorCode.ACME)
-                    continue
-            if (authorizations):
-                return messages.OrderResource(authorizations=authorizations)
-        else:
+        if (2 == self.acme_client.acme_version):
             identifiers = []
 
             for domain_name in domain_names:
@@ -2297,7 +2292,7 @@ class AcmeManager:
             if (identifiers):
                 order = messages.NewOrder(identifiers=identifiers)
                 try:
-                    response = self.acme_client.client._post(self.acme_client.client.directory['newOrder'], order)
+                    response = self.acme_client._post(self.acme_client.directory['newOrder'], order)
                 except Exception as error:
                     self._error('Unable to create authorization order\n', self._indent(error), '\n', code=ErrorCode.ACME)
                     return None
@@ -2305,7 +2300,8 @@ class AcmeManager:
                 authorizations = []
                 for url in body.authorizations:
                     try:
-                        authorizations.append(self.acme_client.client._authzr_from_response(self.acme_client.client._post_as_get(url), uri=url))
+                        authorizations.append(
+                            self.acme_client._authzr_from_response(self.acme_client._post_as_get(url), uri=url))
                     except Exception as error:
                         self._error('Unable to request authorization for ', domain_name, '\n', self._indent(error), '\n', code=ErrorCode.ACME)
                         continue
