@@ -2283,30 +2283,30 @@ class AcmeManager:
         order.update(authorizations=[authorization_resource for authorization_resource in authorization_resources.values()])
 
     def _create_auth_order(self, domain_names):
-        if (2 == self.acme_client.acme_version):
-            identifiers = []
 
-            for domain_name in domain_names:
-                identifiers.append(messages.Identifier(typ=messages.IDENTIFIER_FQDN, value=domain_name))
+        identifiers = []
 
-            if (identifiers):
-                order = messages.NewOrder(identifiers=identifiers)
+        for domain_name in domain_names:
+            identifiers.append(messages.Identifier(typ=messages.IDENTIFIER_FQDN, value=domain_name))
+
+        if (identifiers):
+            order = messages.NewOrder(identifiers=identifiers)
+            try:
+                response = self.acme_client._post(self.acme_client.directory['newOrder'], order)
+            except Exception as error:
+                self._error('Unable to create authorization order\n', self._indent(error), '\n', code=ErrorCode.ACME)
+                return None
+            body = messages.Order.from_json(response.json())
+            authorizations = []
+            for url in body.authorizations:
                 try:
-                    response = self.acme_client._post(self.acme_client.directory['newOrder'], order)
+                    authorizations.append(
+                        self.acme_client._authzr_from_response(self.acme_client._post_as_get(url), uri=url))
                 except Exception as error:
-                    self._error('Unable to create authorization order\n', self._indent(error), '\n', code=ErrorCode.ACME)
-                    return None
-                body = messages.Order.from_json(response.json())
-                authorizations = []
-                for url in body.authorizations:
-                    try:
-                        authorizations.append(
-                            self.acme_client._authzr_from_response(self.acme_client._post_as_get(url), uri=url))
-                    except Exception as error:
-                        self._error('Unable to request authorization for ', domain_name, '\n', self._indent(error), '\n', code=ErrorCode.ACME)
-                        continue
-                if (authorizations):
-                    return messages.OrderResource(body=body, uri=response.headers.get('Location'), authorizations=authorizations)
+                    self._error('Unable to request authorization for ', domain_name, '\n', self._indent(error), '\n', code=ErrorCode.ACME)
+                    continue
+            if (authorizations):
+                return messages.OrderResource(body=body, uri=response.headers.get('Location'), authorizations=authorizations)
         return None
 
     def process_authorizations(self, private_key_names=[]):
