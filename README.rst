@@ -135,11 +135,10 @@ This tool can automatically connect to configured servers and verify that the ge
 Additional checks are made for OSCP staples and optionally HPKP headers can be verified as well.
 
 
-ACME Protocol V1 and V2 Support
--------------------------------
+ACME Protocol V2 Support
+------------------------
 
-This tool supports services running both ACME V1 and ACME V2 APIs.
-Wildcard certrificates may be issued when using the V2 API.
+This tool supports services ACME V2 APIs.
 
 
 Installation

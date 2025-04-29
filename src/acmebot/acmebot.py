@@ -1971,8 +1971,7 @@ class AcmeManager:
 
             try:
                 reg = messages.NewRegistration.from_data(email=self._account('email'),
-                                                         terms_of_service_agreed=_accept_tos(
-                                                             self.acme_client.directory.meta.terms_of_service))
+                                                         terms_of_service_agreed=_accept_tos(self.acme_client.directory.meta.terms_of_service))
                 registration = self.acme_client.new_account(reg)
             except Exception as error:
                 self._fatal("Can't register with ACME service.\n", error, '\n', code=ErrorCode.ACME)
@@ -2283,7 +2282,6 @@ class AcmeManager:
         order.update(authorizations=[authorization_resource for authorization_resource in authorization_resources.values()])
 
     def _create_auth_order(self, domain_names):
-
         identifiers = []
 
         for domain_name in domain_names:
@@ -2300,8 +2298,7 @@ class AcmeManager:
             authorizations = []
             for url in body.authorizations:
                 try:
-                    authorizations.append(
-                        self.acme_client._authzr_from_response(self.acme_client._post_as_get(url), uri=url))
+                    authorizations.append(self.acme_client._authzr_from_response(self.acme_client._post_as_get(url), uri=url))
                 except Exception as error:
                     self._error('Unable to request authorization for ', domain_name, '\n', self._indent(error), '\n', code=ErrorCode.ACME)
                     continue
