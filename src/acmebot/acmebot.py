@@ -50,7 +50,7 @@ from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption,
 
 import josepy
 
-import pkg_resources
+from importlib.metadata import version as pkg_version
 
 import yaml
 
@@ -137,7 +137,7 @@ class AcmeManager:
         script_entry = sys.argv[0]
         self.script_dir = os.path.dirname(os.path.realpath(script_entry))
         self.script_name = os.path.basename(script_entry)
-        self.script_version = pkg_resources.get_distribution('acmebot').version
+        self.script_version = pkg_version('acmebot')
         self.error_code = ErrorCode.NONE
         self.warning_code = WarningCode.NONE
 
@@ -1897,7 +1897,7 @@ class AcmeManager:
 
     def _user_agent(self):
         return '{script}/{version} acme-python/{acme_version}'.format(script=self.script_name, version=self.script_version,
-                                                                      acme_version=pkg_resources.get_distribution('acme').version)
+                                                                      acme_version=pkg_version('acme'))
 
     def _generate_client_key(self, client_key_path):
         self.client_key = josepy.JWKRSA(key=rsa.generate_private_key(public_exponent=65537, key_size=4096, backend=default_backend()))

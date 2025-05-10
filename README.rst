@@ -144,7 +144,7 @@ This tool supports services ACME V2 APIs.
 Installation
 ============
 
-Requires Python 3.7+ and the OpenSSL support.
+Requires Python 3.8+ and OpenSSL support.
 
 On Debian Stretch and later::
 

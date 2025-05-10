@@ -1,6 +1,8 @@
 etc/*
 var/*
 
+.venv*
+
 .mypy_cache
 __pycache__
 *.egg-info
