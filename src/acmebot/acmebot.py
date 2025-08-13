@@ -1850,10 +1850,6 @@ class AcmeManager:
                                     code=ErrorCode.CONFIG)
 
                 certificate_key_types = self._get_list(key_certificates[certificate_name], 'key_types', private_key_types)
-                for key_type in certificate_key_types:
-                    if (key_type not in private_key_types):
-                        self._fatal('Certificate ', certificate_name, ' defines key type ', key_type, ' that is not present in private key\n',
-                                    code=ErrorCode.CONFIG)
                 key_certificates[certificate_name]['key_types'] = certificate_key_types
                 all_certificate_key_types |= set(certificate_key_types)
 
@@ -1892,7 +1888,7 @@ class AcmeManager:
                 else:
                     key_certificates[certificate_name]['verify'] = self.config['settings']['verify']
             private_keys[private_key_name]['certificates'] = key_certificates
-            private_keys[private_key_name]['key_types'] = [key_type for key_type in private_key_types if (key_type in all_certificate_key_types)]
+            private_keys[private_key_name]['key_types'] = list(all_certificate_key_types)
         self.config['private_keys'] = private_keys
 
     def _user_agent(self):

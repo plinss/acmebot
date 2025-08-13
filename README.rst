@@ -931,6 +931,7 @@ As such, it is an error to specify a certificate using the same name in both the
 The private key and certificate settings are identical to those specified in the ``certificates`` section,
 except settings relevant to the private key: ``key_size``, ``key_curve``, ``key_cipher``, ``key_passphrase``, ``key_provided``, ``expiration_days``, ``auto_rollover``, ``hpkp_days``, ``pin_subdomains``, and ``hpkp_report_uri`` are specified in the private key object rather than the certificate object.
 The ``key_types`` setting may be specified in the certificate, private key, or both.
+If specified in the private key, it acts as a default value for all certificates using that key.
 
 Example::
 
