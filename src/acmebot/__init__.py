@@ -1,5 +1,7 @@
 """ACMEbot module."""
 
+import sys
+
 from .acmebot import AcmeError, AcmeManager, ErrorCode, PrivateKeyError
 
 __all__ = ['AcmeManager', 'AcmeError', 'ErrorCode', 'PrivateKeyError']

@@ -417,7 +417,6 @@ class AcmeManager:
                         'start': '2025-07-01T00:00:00Z',
                         'end': '2026-01-01T00:00:00Z',
                     },
-
                     {
                         'log_id': 'lpdkv1VYl633Q4doNwhCd+nwOtX2pPM2bkakPw/KqcY=',
                         'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEOh/Iu87VkEc0ysoBBCchHOIpPZK7kUXHWj6l1PIS5ujmQ7rze8I4r/wjigVW6wMKMMxjbNk8vvV7lLqU07+ITA==',
@@ -527,7 +526,7 @@ class AcmeManager:
                         'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEenPbSvLeT+zhFBu+pqk8IbhFEs16iCaRIFb1STLDdWzL6XwTdTWcbOzxMTzB3puME5K3rT0PoZyPSM50JxgjmQ==',
                         'url': 'https://wyvern.ct.digicert.com/2026h2/',
                         'start': '2026-07-01T00:00:00Z',
-                        'end': '2027-01-01T00:00:00Z'
+                        'end': '2027-01-01T00:00:00Z',
                     },
                 ],
                 'sectigo_sabre': [
@@ -1707,8 +1706,12 @@ class AcmeManager:
     def _sct_datetime(self, sct_timestamp):
         return datetime.datetime.utcfromtimestamp(sct_timestamp / 1000)
 
-    def _get_ct_log(self, ct_log_name, certificate):
+    def _get_ct_log(self, ct_log_name, certificate, report_error: bool = False):
         ct_log = self._config('ct_logs', ct_log_name)
+        if (ct_log is None):
+            if (report_error):
+                self._error('Unknown CT log: ', ct_log_name, '\n', code=ErrorCode.CONFIG)
+            return None
         if (isinstance(ct_log, list)):
             not_after = self._datetime_from_asn1_generaltime(certificate.get_notAfter())
             for log in ct_log:
@@ -1716,11 +1719,14 @@ class AcmeManager:
                 end = datetime.datetime.strptime(log.get('end', '2999-01-01T00:00:00Z'), '%Y-%m-%dT%H:%M:%SZ')
                 if ((start <= not_after) and (not_after < end)):
                     return log
+            if (report_error):
+                self._error('CT log: ', ct_log_name, ' has no valid entry for current date, check for updates or configure a new CT log entry\n',
+                            code=ErrorCode.CONFIG)
             return None
         return ct_log
 
     def fetch_sct(self, ct_log_name, certificate, chain):
-        ct_log = self._get_ct_log(ct_log_name, certificate)
+        ct_log = self._get_ct_log(ct_log_name, certificate, report_error=True)
         if (ct_log and ('url' in ct_log)):
             certificates = ([base64.b64encode(self._certificate_bytes(certificate)).decode('ascii')]
                             + [base64.b64encode(self._certificate_bytes(chain_certificate)).decode('ascii') for chain_certificate in chain])
@@ -1742,8 +1748,6 @@ class AcmeManager:
                 self._warn('Unable to retrieve SCT from log ', ct_log_name, ' ', error.reason, '\n', code=WarningCode.SCT)
             except Exception as error:
                 self._warn('Unable to retrieve SCT from log ', ct_log_name, ' ', error, '\n', code=WarningCode.SCT)
-        else:
-            self._error('Unknown CT log: ', ct_log_name, '\n', code=ErrorCode.CONFIG)
         return None
 
     def load_sct(self, file_name, key_type, ct_log_name, certificate):
