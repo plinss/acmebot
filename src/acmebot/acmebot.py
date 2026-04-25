@@ -279,7 +279,7 @@ class AcmeManager:
                 'key_passphrase': None,
                 'key_provided': False,
                 'dhparam_size': 2048,
-                'ecparam_curve': ['secp521r1', 'secp384r1', 'secp256k1'],
+                'ecparam_curve': ['x448', 'x25519', 'secp521r1', 'secp384r1', 'secp256k1'],
                 'file_user': 'root',
                 'file_group': 'ssl-cert',
                 'log_user': 'root',
@@ -2858,12 +2858,13 @@ class AcmeManager:
                         dhparam_pem = hold_dhparam_pem
 
                 ecparam_curves = self._option_list(key_certificates[certificate_name], 'ecparam_curve')
-                if (ecparam_pem and ecparam_curves and (ecparam_curves != self.ecparam_curves(ecparam_pem))):
+                specified_ecparam_pem = self.generate_ecparam(ecparam_curves) if (ecparam_curves) else None
+                if (ecparam_pem and ecparam_curves and (ecparam_pem != specified_ecparam_pem)):
                     self._info('Elliptical curve parameters for ', certificate_name, ' are not curve ', ':'.join(ecparam_curves), '\n')
                     ecparam_pem = None
-                if ((not ecparam_pem) and (ecparam_curves)):
+                if ((not ecparam_pem) and ecparam_curves):
                     self._status('Generating ', ':'.join(ecparam_curves), ' elliptical curve parameters for ', certificate_name, '\n')
-                    ecparam_pem = self.generate_ecparam(ecparam_curves)
+                    ecparam_pem = specified_ecparam_pem
                     if (ecparam_pem):
                         generated_params = True
                     else:
