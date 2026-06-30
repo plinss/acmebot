@@ -374,7 +374,7 @@ These files contain HTTP header directives setting HPKP for both the primary and
 
 Each file is suitable to be included in the server configuration for either Apache or Nginx respectively.
 
-Thess files will not be created if the ``hpkp`` directory is set to ``null``.
+These files will not be created if the ``hpkp`` directory is set to ``null``.
 
 
 Signed Certificate Timestamp (SCT) Files
@@ -385,12 +385,16 @@ These files contain SCT information in binary form suitable to be included in a 
 By default, SCTs will be retrieved from the Google Icarus and Google Pilot certificate transparency logs.
 The Google Test Tube certificate transparency log can be used with the Let's Encrypt staging environment for testing.
 
+These files will not be created if the ``sct`` directory is set to ``null``.
+
 
 OCSP Response Files
 -------------------
 One OCSP response file will be created for each key type,
 in /etc/ssl/ocsp, named ``<certificate-name>.<key_type>.ocsp``.
 These files contain OCSP responses in binary form suitable to be used as stapled OCSP responses.
+
+These files will not be created if the ``ocsp`` directory is set to ``null``.
 
 
 Archive Directory
@@ -709,13 +713,13 @@ All of these need only be present when the desired value is different from the d
 * ``http_challenge`` specifies the directory to store ACME http-01 challenge files.
   The default value is ``null``.
 * ``hpkp`` specifies the directory to store HPKP header files.
-  The default value is ``"/etc/ssl/hpkp"``.
+  The default value is ``null``.
   HPKP header files may be turned off by setting this to ``null``.
 * ``sct`` specifies the directory to store Signed Certificate Timestamp files.
   The default value is ``"/etc/ssl/scts/<certificate-name>/<key-type>"``.
   SCT files may be turned off by setting this to ``null``.
 * ``ocsp`` specifies the directory to store OCSP response files.
-  The default value is ``"/etc/ssl/ocsp"``.
+  The default value is ``null``.
   OCSP response files may be turned off by setting this to ``null``.
 * ``update_key`` specifies the directory to search for DNS update key files.
   The default value is ``"/etc/ssl/update_keys"``.
