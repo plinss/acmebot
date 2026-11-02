@@ -374,20 +374,6 @@ class AcmeManager:
             'ct_logs': {
                 'google_argon': [
                     {
-                        'log_id': 'TnWjJ1yaEMM4W2zU3z9S6x3w4I4bjWnAsfpksWKaOd8=',
-                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEIIKh+WdoqOTblJji4WiH5AltIDUzODyvFKrXCBjw/Rab0/98J4LUh7dOJEY7+66+yCNSICuqRAX+VPnV8R1Fmg==',
-                        'url': 'https://ct.googleapis.com/logs/us1/argon2025h1/',
-                        'start': '2025-01-01T00:00:00Z',
-                        'end': '2025-07-01T00:00:00Z',
-                    },
-                    {
-                        'log_id': 'EvFONL1TckyEBhnDjz96E/jntWKHiJxtMAWE6+WGJjo=',
-                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEr+TzlCzfpie1/rJhgxnIITojqKk9VK+8MZoc08HjtsLzD8e5yjsdeWVhIiWCVk6Y6KomKTYeKGBv6xVu93zQug==',
-                        'url': 'https://ct.googleapis.com/logs/us1/argon2025h2/',
-                        'start': '2025-07-01T00:00:00Z',
-                        'end': '2026-01-01T00:00:00Z',
-                    },
-                    {
                         'log_id': 'DleUvPOuqT4zGyyZB7P3kN+bwj1xMiXdIaklrGHFTiE=',
                         'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEB/we6GOO/xwxivy4HhkrYFAAPo6e2nc346Wo2o2U+GvoPWSPJz91s/xrEvA3Bk9kWHUUXVZS5morFEzsgdHqPg==',
                         'url': 'https://ct.googleapis.com/logs/us1/argon2026h1/',
@@ -404,20 +390,6 @@ class AcmeManager:
                 ],
                 'google_xenon': [
                     {
-                        'log_id': 'zxFW7tUufK/zh1vZaS6b6RpxZ0qwF+ysAdJbd87MOwg=',
-                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEguLOkEA/gQ7f6uEgK14uMFRGgblY7a+9/zanngtfamuRpcGY4fLN6xcgcMoqEuZUeFDc/239HKe2Oh/5JqkbvQ==',
-                        'url': 'https://ct.googleapis.com/logs/eu1/xenon2025h1/',
-                        'start': '2025-01-01T00:00:00Z',
-                        'end': '2025-07-01T00:00:00Z',
-                    },
-                    {
-                        'log_id': '3dzKNJXX4RYF55Uy+sef+D0cUN/bADoUEnYKLKy7yCo=',
-                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEa+Cv7QZ8Pe/ZDuRYSwTYKkeZkIl6uTaldcgEuMviqiu1aJ2IKaKlz84rmhWboD6dlByyt0ryUexA7WJHpANJhg==',
-                        'url': 'https://ct.googleapis.com/logs/eu1/xenon2025h2/',
-                        'start': '2025-07-01T00:00:00Z',
-                        'end': '2026-01-01T00:00:00Z',
-                    },
-                    {
                         'log_id': 'lpdkv1VYl633Q4doNwhCd+nwOtX2pPM2bkakPw/KqcY=',
                         'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEOh/Iu87VkEc0ysoBBCchHOIpPZK7kUXHWj6l1PIS5ujmQ7rze8I4r/wjigVW6wMKMMxjbNk8vvV7lLqU07+ITA==',
                         'url': 'https://ct.googleapis.com/logs/eu1/xenon2026h1/',
@@ -433,13 +405,6 @@ class AcmeManager:
                     },
                 ],
                 'cloudflare_nimbus': [
-                    {
-                        'log_id': 'zPsPaoVxCWX+lZtTzumyfCLphVwNl422qX5UwP5MDbA=',
-                        'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEGoAaFRkZI3m0+qB5jo3VwdzCtZaSfpTgw34UfAoNLUaonRuxQWUMX5jEWhd5gVtKFEHsr6ldDqsSGXHNQ++7lw==',
-                        'url': 'https://ct.cloudflare.com/logs/nimbus2025/',
-                        'start': '2025-01-01T00:00:00Z',
-                        'end': '2026-01-01T00:00:00Z',
-                    },
                     {
                         'log_id': 'yzj3FYl8hKFEX1vB3fvJbvKaWc1HCmkFhbDLFMMUWOc=',
                         'key': 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE2FxhT6xq0iCATopC9gStS9SxHHmOKTLeaVNZ661488Aq8tARXQV+6+jB0983v5FkRm4OJxPqu29GJ1iG70Ahow==',
