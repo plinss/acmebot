@@ -387,6 +387,13 @@ class AcmeManager:
                         'start': '2026-07-01T00:00:00Z',
                         'end': '2027-01-01T00:00:00Z',
                     },
+                    {
+                        "log_id": "1tWNqdAXU/NqSqDHV0kCr+vH3CzTjNn3ZMgMiRkenwI=",
+                        "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEKHRm0H/zUaFA6Idz5cGvGO3tCPQyfGMgJmVBOPyKAP6mGM1IiNXi4CLomOUyYj0YN74p+eGVApFMsM4h/jzCsA==",
+                        "url": "https://ct.googleapis.com/logs/us1/argon2027h1/",
+                        "start": "2027-01-01T00:00:00Z",
+                        "end": "2027-07-01T00:00:00Z"
+                    }
                 ],
                 'google_xenon': [
                     {
@@ -403,6 +410,14 @@ class AcmeManager:
                         'start': '2026-07-01T00:00:00Z',
                         'end': '2027-01-01T00:00:00Z',
                     },
+                    {
+                        "log_id": "RMK9DOkUDmSlyUoBkwpaobs1lw4A7hEWiWgqHETXtWY=",
+                        "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE/6WcA4VRSljIfTdY48+pFRLLtLrmTb88cGDdl8Gv3E2LduG4jgJ3AK5iNMFGhpbRRLi5B3rPlBaXVywuR5IFDg==",
+                        "url": "https://ct.googleapis.com/logs/eu1/xenon2027h1/",
+                        "start": "2027-01-01T00:00:00Z",
+                        "end": "2027-07-01T00:00:00Z"
+                    }
+
                 ],
                 'cloudflare_nimbus': [
                     {
